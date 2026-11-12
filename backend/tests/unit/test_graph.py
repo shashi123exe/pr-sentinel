@@ -81,6 +81,13 @@ def mock_github_client():
     return client
 
 
+@pytest.fixture(autouse=True)
+def hermetic_graph_test_environment(monkeypatch):
+    """Enforce complete independence from ambient Gemini credentials."""
+    monkeypatch.setenv("GEMINI_API_KEY", "")
+    monkeypatch.setenv("GEMINI_MODEL", "")
+
+
 # ==============================================================================
 # Scenario A: Graph Happy Path
 # ==============================================================================
@@ -722,14 +729,23 @@ async def test_unexpected_exception_in_graph_stages_routes_to_fail_review(
         db.commit()
 
     mock_analysis_runner = AsyncMock(spec=StaticAnalysisRunner)
-    mock_analysis_runner.run.return_value = StaticAnalysisResult(
-        findings=[], tool_errors=[], tools_run=[]
-    )
+    if node_to_fail == "static_analysis":
+        mock_analysis_runner.run.side_effect = RuntimeError(
+            f"Simulated crash in {node_to_fail}"
+        )
+    else:
+        mock_analysis_runner.run.return_value = StaticAnalysisResult(
+            findings=[], tool_errors=[], tools_run=[]
+        )
+
+    fake_ai = FakeGeminiClient(responses=[AIReviewResponse(findings=[])])
 
     deps = GraphDependencies(
         session_factory=session_factory,
         github_client=mock_github_client,
+        gemini_client=fake_ai,
         analysis_runner=mock_analysis_runner,
+        model_name="gemini-2.5-pro",
     )
     graph = build_graph(deps=deps).compile()
 
@@ -821,6 +837,7 @@ async def test_multiple_findings_identical_locations_persist_safely(
         github_client=mock_github_client,
         gemini_client=fake_client,
         analysis_runner=mock_runner,
+        model_name="gemini-2.5-pro",
     )
     graph = build_graph(deps=deps).compile()
 

@@ -86,7 +86,25 @@ def build_graph(deps: GraphDependencies | None = None) -> StateGraph:
     async def _validate_findings_node(
         state: ReviewState, config: RunnableConfig | None = None
     ) -> dict[str, Any]:
-        return await validate_findings(state, _resolve_deps(config, active_deps))
+        try:
+            return await validate_findings(state, _resolve_deps(config, active_deps))
+        except Exception as exc:
+            logger.error(
+                "Unexpected error in validate_findings node for %s: %s",
+                state.get("review_id"),
+                exc,
+            )
+            return {
+                "failed": True,
+                "errors": state.get("errors", [])
+                + [
+                    {
+                        "code": "validation_failed",
+                        "message": "Failed to validate review findings.",
+                        "stage": "validate_findings",
+                    }
+                ],
+            }
 
     async def _persist_results_node(
         state: ReviewState, config: RunnableConfig | None = None
