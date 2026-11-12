@@ -1,0 +1,56 @@
+# ==============================================================================
+# PR Sentinel — Root Docker Ignore Configuration
+# Prevents secrets, virtualenvs, node_modules, and artifacts from build context
+# ==============================================================================
+
+# Version control
+.git
+.github
+.gitignore
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+
+# Python caches, virtual environments, and test artifacts
+**/.venv
+**/venv
+**/env
+**/__pycache__
+**/*.py[cod]
+**/*$py.class
+**/*.so
+**/.pytest_cache
+**/.ruff_cache
+**/.coverage
+**/htmlcov
+**/coverage.xml
+
+# Node and frontend artifacts
+**/node_modules
+**/dist
+**/build
+**/.npm
+
+# SQLite database files and logs
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/*.sqlite
+**/*.sqlite3
+**/*.log
+
+# Scratch scripts and temporary files
+scratch/
+**/scratch/
+
+# IDE and OS metadata
+.DS_Store
+Thumbs.db
+.idea
+.vscode
+*.swp
+*.swo

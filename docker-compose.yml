@@ -1,0 +1,85 @@
+# ==============================================================================
+# PR Sentinel — Multi-Container Docker Compose Stack
+# ==============================================================================
+# Services:
+#   - backend: FastAPI + SQLite + LangGraph + Static Analysis (Port 8000 internal)
+#   - frontend: React + TypeScript + Nginx Reverse Proxy (Port 8080 published)
+# ==============================================================================
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: pr_sentinel_backend
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment:
+      - DATABASE_URL=sqlite:////app/data/pr_sentinel.db
+      - CORS_ORIGINS=http://localhost:8080,http://127.0.0.1:8080
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - sqlite_data:/app/data
+    expose:
+      - "8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request, sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/health', timeout=3).getcode() == 200 else 1)",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    networks:
+      - pr_sentinel_net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: pr_sentinel_frontend
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    ports:
+      - "8080:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://127.0.0.1:8080/",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 5s
+      retries: 3
+    networks:
+      - pr_sentinel_net
+
+volumes:
+  sqlite_data:
+    name: pr_sentinel_sqlite_data
+
+networks:
+  pr_sentinel_net:
+    name: pr_sentinel_network
+    driver: bridge

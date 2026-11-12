@@ -1,0 +1,32 @@
+# Backend Docker Ignore Configuration
+.venv
+venv
+env
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache
+.ruff_cache
+.coverage
+htmlcov
+coverage.xml
+
+# Secrets and environment files
+.env
+.env.*
+!.env.example
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Test and development tooling
+tests/
+tools/eslint/node_modules/
+MagicMock/
+scratch/
+*.log

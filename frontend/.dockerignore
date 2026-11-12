@@ -1,0 +1,12 @@
+# Frontend Docker Ignore Configuration
+node_modules
+dist
+build
+.npm
+.vite
+.env
+.env.*
+!.env.example
+*.log
+src/test/
+coverage/

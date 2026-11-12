@@ -1,0 +1,17 @@
+{
+  "name": "pr-sentinel-eslint-tool",
+  "version": "1.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Isolated trusted ESLint environment for PR Sentinel static analysis",
+  "type": "module",
+  "scripts": {
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.14.0",
+    "globals": "^17.14.0",
+    "typescript-eslint": "^8.72.1"
+  }
+}

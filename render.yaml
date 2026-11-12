@@ -1,0 +1,71 @@
+# ==============================================================================
+# PR Sentinel — Render Single-Service Infrastructure Blueprint
+# ==============================================================================
+# Documentation: https://render.com/docs/blueprint-spec
+#
+# ARCHITECTURE:
+# Single Docker Web Service serving both compiled React SPA frontend assets and
+# FastAPI backend REST API endpoints on the same domain and port.
+#
+# NOTE ON LOCAL VERIFICATION:
+# YAML syntax is validated locally via PyYAML. Render Blueprint API schema
+# validation is unverified locally due to absence of the Render CLI binary.
+# ==============================================================================
+
+services:
+  # ----------------------------------------------------------------------------
+  # PR Sentinel — Unified Web Service (React SPA + FastAPI Backend)
+  # ----------------------------------------------------------------------------
+  - type: web
+    name: pr-sentinel
+    runtime: docker
+    dockerfilePath: ./Dockerfile.render
+    plan: free
+    region: oregon
+    numInstances: 1
+    healthCheckPath: /api/health
+    envVars:
+      - key: SERVE_FRONTEND
+        value: "true"
+      # WARNING — PERSISTENCE NOTICE:
+      # Free SQLite storage (sqlite:///./pr_sentinel.db) is ephemeral and will be
+      # lost on container restart, redeploy, or 15-minute inactivity spin-down.
+      # For persistent reviews and settings, attach a PostgreSQL database or
+      # mount a Render Persistent Disk (/app/data).
+      - key: DATABASE_URL
+        value: sqlite:///./pr_sentinel.db
+      # Daily rolling review limit (spending protection against Gemini LLM quota exhaustion)
+      # WARNING: With free ephemeral SQLite, this count resets if the instance spins down.
+      # For durable daily quota tracking, attach persistent PostgreSQL or mount a disk.
+      - key: MAX_REVIEWS_PER_DAY
+        value: "20"
+      - key: LOG_LEVEL
+        value: INFO
+      # Sensitive secrets configured via Render Dashboard (never hardcoded in blueprint)
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: APP_ACCESS_TOKEN
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: GEMINI_MODEL
+        sync: false
+
+# ------------------------------------------------------------------------------
+# Optional Managed Database (Render PostgreSQL)
+# ------------------------------------------------------------------------------
+# CRITICAL NOTICE — RENDER FREE POSTGRESQL TIER CONSTRAINTS:
+# 1. Free Render PostgreSQL databases expire and are permanently destroyed after 30 days.
+# 2. Maximum database capacity is 1 GB with strict connection limits.
+# 3. Automated daily backups and point-in-time recovery are NOT included in the free tier.
+# 4. Paid PostgreSQL or an external managed provider (e.g. Neon, Supabase, AWS RDS)
+#    is required for long-term production data retention.
+#
+# To attach a Render-managed database, uncomment the block below and update
+# the service DATABASE_URL to fromDatabase: { name: pr-sentinel-db, property: connectionString }
+#
+# databases:
+#   - name: pr-sentinel-db
+#     plan: free
+#     databaseName: pr_sentinel
+#     user: sentinel_user
