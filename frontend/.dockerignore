@@ -9,4 +9,8 @@ build
 !.env.example
 *.log
 src/test/
+src/*.test.ts
+src/*.test.tsx
+**/*.test.ts
+**/*.test.tsx
 coverage/
