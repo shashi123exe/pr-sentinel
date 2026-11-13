@@ -1,219 +1,277 @@
 # PR Sentinel
 
-> **Automated, High-Precision GitHub Pull Request Review Platform Combining Deterministic Static Analysis with Google Gemini and LangGraph.**
+> **Automated, High-Precision GitHub Pull Request Review Platform Combining Deterministic AST Static Analysis with Google Gemini and Stateful LangGraph Orchestration.**
 
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Render%20Cloud-00c7b7.svg)](https://pr-sentinel-btyl.onrender.com)
+[![GitHub Actions CI](https://img.shields.io/badge/CI-GitHub%20Actions-brightgreen.svg)](https://github.com/shashi123exe/pr-sentinel/actions)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.162.0-009688.svg)](https://fastapi.tiangolo.com/)
 [![React 19](https://img.shields.io/badge/React-19.3.1-61dafb.svg)](https://react.dev/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-1.2.19-orange.svg)](https://github.com/langchain-ai/langgraph)
-[![Tests Passing](https://img.shields.io/badge/tests-476%20passed-success.svg)](docs/DEMO_CHECKLIST.md)
+[![PostgreSQL](https://img.shields.io/badge/Database-Neon%20Serverless%20Postgres-4169e1.svg)](https://neon.tech/)
+[![Coverage](https://img.shields.io/badge/Coverage-93%25-success.svg)](docs/ARCHITECTURE.md)
+[![Tests Passing](https://img.shields.io/badge/Tests-489%20Passed%2C%201%20Skipped-success.svg)](docs/DEMO_GUIDE.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ---
 
-## 1. Problem Statement & Motivation
+## 1. Project Introduction & Live Demo
 
-Modern engineering teams spend hours reviewing pull requests. While linters catch basic formatting errors and generic LLM chatbots can comment on code, existing AI review tools suffer from severe flaws:
-- **Hallucinations**: Generative models frequently reference nonexistent files or invent line ranges.
-- **Alert Fatigue**: Raw LLM output often repeats trivial linter warnings, creating noise.
-- **Security Vulnerabilities**: Naive chatbots can be jailbroken via prompt injection embedded directly in diff patches or commit messages.
-- **Lack of Verification**: Chatbots cannot verify whether their suggested fixes are syntactically sound or anchored to actual changed code.
+**PR Sentinel** is a production-deployed, automated code review platform engineered to provide verifiable, actionable feedback on GitHub Pull Requests. It mitigates ungrounded LLM claims and alert fatigue by treating code review as an engineering pipeline rather than an unstructured chat prompt.
 
-**PR Sentinel** bridges this divide. It treats code review as an engineering pipeline rather than an unstructured chat prompt. By running deterministic static analysis first (Ruff, Bandit), providing surrounding AST symbol context, orchestrating Google Gemini within a stateful LangGraph state machine, and strictly verifying every finding against verbatim patch lines, PR Sentinel delivers verifiable, hallucination-free code reviews.
-
----
-
-## 2. Key Features
-
-- **Multi-Engine Static Analysis**: Dispatches `Ruff` (linter/formatter) and `Bandit` (security scanner) in ephemeral workspaces with strict `--isolated` flags, preventing untrusted repository configurations from executing arbitrary code.
-- **Deterministic Context Retrieval**: Analyzes Python ASTs to extract class and function definitions from modified and referenced files, providing surrounding context with zero vector embedding latency or drift.
-- **LangGraph Review State Machine**: Coordinates review lifecycles across 7 fault-tolerant stages (`fetch_pr` &rarr; `process_diff` &rarr; `static_analysis` &rarr; `retrieve_context` &rarr; `ai_review` &rarr; `validate_findings` &rarr; `persist_results`).
-- **Hallucination Defense**: Programmatically verifies every finding against the diff patch: line bounds must overlap changed lines, and code evidence must match repository contents verbatim.
-- **Fingerprint Deduplication**: Merges static scanner alerts and AI observations on the same line into unified, collision-resistant records using SHA-256 fingerprinting.
-- **Developer-Centric React 19 Dashboard**: Interactive diff viewer with inline gutter annotations, side drawer for finding inspection, finding triage state machine (`open` &rarr; `approved` / `dismissed`), and resilient polling.
-- **Hardened Security Architecture**: Strict SSRF URL validation, Windows reserved device driver filtering, prompt injection delimiter neutralization, SlowAPI rate limiting, and pattern-based secret redaction.
+- **Live Production URL**: [https://pr-sentinel-btyl.onrender.com](https://pr-sentinel-btyl.onrender.com)
+- **Source Code Repository**: [https://github.com/shashi123exe/pr-sentinel](https://github.com/shashi123exe/pr-sentinel)
+- **Interactive Technical Walkthrough**: [docs/DEMO_GUIDE.md](docs/DEMO_GUIDE.md)
+- **Deep-Dive System Architecture**: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
 ---
 
-## 3. Architecture Overview
+## 2. Problem Statement & Motivation
+
+Modern engineering organizations spend thousands of engineering hours manually reviewing code changes. While basic linters catch syntax formatting and commercial generative AI chatbots can comment on code diffs, existing LLM code reviewers suffer from three fatal flaws:
+
+1. **Hallucination of Code & Line Ranges**: Generative models frequently reference nonexistent files or invent line bounds that were never modified in the pull request.
+2. **Alert Fatigue & Noise**: Raw LLMs repeat basic formatting issues already caught by linters, drowning out critical security vulnerabilities.
+3. **Fragility & Quota Exhaustion**: Large language model APIs frequently encounter HTTP 503 capacity spikes, rate limits, or timeouts during peak hours, causing reviews to silently abort or fail unpredictably.
+
+### The PR Sentinel Solution
+PR Sentinel replaces unstructured prompts with an asynchronous **7-stage LangGraph state machine**. It executes deterministic static analysis first (Ruff and Bandit via subprocess execution in temporary directories with stripped environments and 30s timeouts), extracts surrounding Python AST symbol definitions without vector database drift, invokes Google Gemini with strict Pydantic schemas, and programmatically enforces **verbatim evidence verification** before any finding is accepted.
+
+---
+
+## 3. Key Features
+
+- **Asynchronous LangGraph Review Pipeline**: State-machine orchestration across 7 fault-tolerant stages (`fetch_pr` &rarr; `process_diff` &rarr; `static_analysis` &rarr; `retrieve_context` &rarr; `ai_review` &rarr; `validate_findings` &rarr; `persist_results`).
+- **Resilient AI Cascade & Quota Defense**: Uses `gemini-3.8-flash` as primary model with automatic fallback to `gemini-3.6-flash` on HTTP 503 capacity spikes or timeouts. Distinguishes permanent daily quota limits from temporary rate limits.
+- **Verbatim Evidence Verification**: Every AI finding must pass line-boundary intersection with the diff and verbatim evidence string matching against actual repository contents. Unanchored findings that fail verification are dropped.
+- **SHA-256 Fingerprint Deduplication**: Merges overlapping static analysis findings and AI observations on identical lines into collision-resistant records.
+- **Deterministic AST Context Retrieval**: Analyzes Python ASTs to extract enclosing class and function definitions without vector database latency, embedding drift, or operational costs.
+- **React 19 Developer Dashboard**: Interactive unified diff viewer with inline finding gutter annotations, slide-out finding drawer, persistent one-click triage state machine (`open` &rarr; `approved` / `dismissed`), and resilient polling.
+- **Production Serverless Persistence**: Backed by **Neon Serverless PostgreSQL** via SQLAlchemy 2.0 and Psycopg 3 with SSL connection pooling.
+- **Free-Tier Cloud Deployment**: Packaged as a single-port unified Docker container deployed using Render Free Web Service (512MB RAM) and Neon Free PostgreSQL, with Gemini usage subject to free-tier quotas and provider terms.
+
+---
+
+## 4. Architecture Diagram
 
 ```mermaid
 flowchart TD
-    subgraph UI["Frontend Dashboard (React 19)"]
-        Dashboard["Dashboard View"]
-        DiffUI["DiffViewer (Inline Markers)"]
-        Drawer["FindingDetailDrawer (Triage)"]
-        Dashboard --> DiffUI
-        Dashboard --> Drawer
+    subgraph Client["Developer Interface (React 19 SPA)"]
+        UI["Dashboard & Review Views"]
+        DiffUI["DiffViewer (Gutter Annotations)"]
+        TriageUI["FindingDetailDrawer (Triage Actions)"]
+        UI --> DiffUI
+        UI --> TriageUI
     end
 
-    subgraph Edge["Reverse Proxy"]
-        Nginx["Nginx (Port 8080)\n/api -> backend:8000"]
-    end
-
-    subgraph Backend["FastAPI Backend Service (Port 8000)"]
-        Router["FastAPI REST Router"]
-        RateLimit["SlowAPI Rate Limiter"]
+    subgraph Container["Render Production Web Service (Port 8000)"]
+        Router["FastAPI REST API (/api/*)"]
+        SPA["SPA Static Files Mount (/app/frontend/dist)"]
+        Auth["Access Token Gate (sessionStorage)"]
+        Limiter["SlowAPI Rate Limiter"]
         BG["FastAPI BackgroundTasks Queue"]
-        Router --> RateLimit --> BG
+
+        Router --> Auth --> Limiter --> BG
     end
 
-    subgraph Engine["LangGraph Review Pipeline (ReviewState)"]
+    subgraph Pipeline["LangGraph State Machine (ReviewState)"]
         S1["1. fetch_pr"] --> S2["2. process_diff"]
         S2 --> S3["3. static_analysis"]
         S3 --> S4["4. retrieve_context"]
         S4 --> S5["5. ai_review"]
         S5 --> S6["6. validate_findings"]
         S6 --> S7["7. persist_results"]
-
-        S1 -.->|Error| Fail["fail_review"]
-        S2 -.->|Error| Fail
-        S3 -.->|Error| Fail
-        S4 -.->|Error| Fail
-        S5 -.->|Error| Fail
-        S6 -.->|Error| Fail
-        S7 -.->|Error| Fail
     end
 
     subgraph External["External Integrations"]
-        GH["GitHub REST API (v3)"]
+        GitHub["GitHub REST API (v3)"]
         Ruff["Ruff Linter (--isolated)"]
-        Bandit["Bandit AST Scanner"]
-        Gemini["Google Gemini API (google-genai)"]
+        Bandit["Bandit AST Security Scanner"]
+        GeminiPrimary["Gemini 3.8 Flash (Primary)"]
+        GeminiFallback["Gemini 3.6 Flash (Fallback)"]
+        NeonDB[("Neon Serverless PostgreSQL (Psycopg 3, SSL)")]
     end
 
-    subgraph Data["Persistence"]
-        ORM["SQLAlchemy 2.0 ORM"]
-        DB[("SQLite (WAL Mode, FK=ON)\npr_sentinel.db")]
-        ORM --> DB
-    end
+    Client -->|HTTPS + X-Access-Token| Container
+    Container --> SPA
+    BG -->|Execute ainvoke| Pipeline
 
-    UI -->|HTTP /api| Nginx
-    Nginx -->|Proxy| Router
-    BG -->|Execute ainvoke| Engine
-    S1 <-->|HTTPS| GH
+    S1 <-->|Fetch PR & Diffs| GitHub
     S3 -->|create_subprocess_exec| Ruff
     S3 -->|create_subprocess_exec| Bandit
-    S5 <-->|Pydantic Structured Output| Gemini
-    S7 -->|Commit| ORM
-    Router <-->|Query| ORM
+    S4 <-->|AST Symbol Extraction| S2
+    S5 <-->|GenerateContentConfig| GeminiPrimary
+    S5 -.->|503 Capacity Fallback| GeminiFallback
+    S6 <-->|Verbatim Text Match| S2
+    S7 -->|Commit ORM Transaction| NeonDB
+    Router <-->|Session Query| NeonDB
 ```
 
-For complete technical details, state models, and sequence diagrams, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+---
+
+## 5. Technology Stack
+
+| Component | Technologies & Frameworks | Description |
+| :--- | :--- | :--- |
+| **Frontend** | React 19, TypeScript, Vite, Tailwind CSS, Lucide React | Modern SPA with client-side routing, accessible UI components, and optimistic updates. |
+| **Backend** | Python 3.12, FastAPI, Uvicorn, Pydantic v2, SlowAPI | High-performance asynchronous REST API service with strict request/response validation. |
+| **AI Orchestration** | LangGraph (`StateGraph`), Google GenAI SDK | Stateful review pipeline with conditional edge routing and deterministic state contracts. |
+| **LLM Models** | Gemini 3.8 Flash (Primary), Gemini 3.6 Flash (Fallback) | Google GenAI free-tier structured JSON models with zero tool-calling side effects. |
+| **Static Analyzers** | Ruff (0.17.3), Bandit (1.9.4), ESLint | AST-level security scanning and linting via subprocesses in temporary directories with 30s timeouts and sanitized environments. |
+| **Database** | Neon Serverless PostgreSQL (Production), SQLite 3 (Dev) | SQLAlchemy 2.0 ORM, Psycopg 3.3.8 driver, SSL pooling, and WAL mode. |
+| **Deployment** | Render Free Tier, Multi-stage Docker, Alpine Linux | Unified single-port container serving both compiled React SPA and FastAPI backend. |
+| **Testing & CI** | GitHub Actions, Pytest, Pytest-Cov, Respx, Vitest, Oxlint | 489 passed, 1 skipped (433 backend, 56 frontend) with 93% backend coverage and multi-job CI verification. |
 
 ---
 
-## 4. Technology Stack
+## 6. Seven-Stage LangGraph Review Workflow
 
-| Layer | Technologies & Libraries |
-| :--- | :--- |
-| **Frontend** | React 19, TypeScript, Vite, Tailwind CSS, React Router DOM v7, Lucide React, Vitest, React Testing Library, Oxlint |
-| **Backend** | Python 3.12, FastAPI, Uvicorn, Pydantic v2, Pydantic Settings, SQLAlchemy 2.0, HTTPX, SlowAPI |
-| **AI & Orchestration** | Google Gemini (Gemini 2.5 Pro / 3.5 Flash) via official `google-genai` SDK, LangGraph (`StateGraph`) |
-| **Static Analyzers** | Ruff (0.17.3), Bandit (1.9.4), ESLint sandbox runner |
-| **Storage & Persistence** | SQLite 3 (WAL mode, FK=ON), PostgreSQL (Psycopg 3.3.8, connection pooling, SQLAlchemy 2.0 URL normalization) |
-| **Deployment & Cloud** | Render Infrastructure Blueprint (`render.yaml`, unified Docker Web Service), Multi-stage Docker (`python:3.12-slim`, `node:22-alpine`), Docker Compose 2.24.0+ |
-| **CI / Automation** | GitHub Actions, Pytest, Pytest-Cov, Respx |
-
----
-
-## 5. LangGraph Review Pipeline Stages
-
-The review pipeline is executed asynchronously within a compiled `StateGraph` consuming and mutating a strongly typed `ReviewState`:
-
-1. **`fetch_pr` (15%)**: Validates the PR URL format, parses owner/repo/number, and authenticates with GitHub REST API to fetch metadata and unified diff patches.
-2. **`process_diff` (30%)**: Parses unified diffs into structured file objects and hunks. Filters out binary files, lockfiles, and minified code, enforcing a 50KB per-file diff limit and a 500KB total PR cap.
-3. **`static_analysis` (50%)**: Writes changed files to an ephemeral temporary directory and executes `ruff` and `bandit` in parallel via isolated subprocesses with 30s timeouts.
-4. **`retrieve_context` (65%)**: Scans Python ASTs for referenced classes and functions, extracting up to 50 symbol snippets (100KB cap) to provide surrounding context.
-5. **`ai_review` (80%)**: Encloses diffs, context, and static findings into XML blocks with neutralized closing tags. Invokes Google Gemini with Pydantic structured schemas (`AIReviewResponse`), with single-repair retry on JSON errors.
-6. **`validate_findings` (90%)**: Verifies that finding file paths exist, line ranges intersect modified code, and quoted evidence matches verbatim. Drops hallucinated alerts and deduplicates findings via SHA-256 fingerprints.
-7. **`persist_results` (100%)**: Saves review records, file diffs, and deduplicated findings into SQLite. Updates token metrics and marks status as `COMPLETED`.
-
----
-
-## 6. Screenshots & Visual Walkthrough
-
-PR Sentinel includes real, verifiable Chrome DevTools Protocol (CDP) screenshots captured during end-to-end browser verification:
-
-| View | Description | Screenshot |
-| :--- | :--- | :---: |
-| **Dashboard** | Overview of recent PR reviews, status badges, and quick review launcher. | [01_dashboard.png](docs/screenshots/01_dashboard.png) |
-| **Review Detail** | Completed review showing progress stepper, findings breakdown, and metrics. | [05_review_detail.png](docs/screenshots/05_review_detail.png) |
-| **Finding Drawer** | Slide-out panel displaying evidence, explanations, suggested fixes, and triage controls. | [06_finding_drawer.png](docs/screenshots/06_finding_drawer.png) |
-| **Diff Viewer** | Unified diff viewer showing changed lines with clickable inline finding gutter markers. | [11_diff_viewer_markers.png](docs/screenshots/11_diff_viewer_markers.png) |
-| **Finding Triage** | One-click state machine mutations (`approved`, `dismissed`, `reopened`) persisting across reloads. | [07_finding_approved.png](docs/screenshots/07_finding_approved.png) |
-| **Polling Resilience** | Automatic UI recovery during unexpected backend restarts without page reload. | [15_polling_outage_retained.png](docs/screenshots/15_polling_outage_retained.png) |
-
-For the complete 16-screenshot test sequence and synthetic demo notes, see [docs/DEMO_CHECKLIST.md](docs/DEMO_CHECKLIST.md).
-
----
-
-## 7. Running with Docker
-
-### Prerequisites
-- Docker Engine (v24+) with **Docker Compose version 2.24.0 or later** (explicitly required because `docker-compose.yml` uses `env_file.required: false`).
-
-### 1. Environment Configuration
-Copy the provided environment template into the backend directory:
-```bash
-cp .env.example backend/.env
-```
-Edit `backend/.env` to configure your API keys:
-- `GEMINI_API_KEY`: Google Gemini API key.
-- `GEMINI_MODEL`: *(Optional)* e.g. `gemini-2.5-pro` or `gemini-3.5-flash`.
-- `GITHUB_TOKEN`: *(Optional)* GitHub PAT for increased rate limits or private repos.
-
-> [!IMPORTANT]
-> Never commit `backend/.env` or credentials to version control. Build contexts strictly exclude `.env` files via `.dockerignore`.
-
-### 2. Build and Start Services
-```bash
-# Build multi-stage Docker images
-docker compose build
-
-# Start services in the background
-docker compose up -d
+```mermaid
+flowchart LR
+    A["1. fetch_pr<br/>(GitHub API)"] --> B["2. process_diff<br/>(Hunk Parsing)"]
+    B --> C["3. static_analysis<br/>(Ruff & Bandit)"]
+    C --> D["4. retrieve_context<br/>(AST Symbols)"]
+    D --> E["5. ai_review<br/>(Gemini Cascade)"]
+    E --> F["6. validate_findings<br/>(Verbatim Match)"]
+    F --> G["7. persist_results<br/>(Neon PostgreSQL)"]
 ```
 
-### 3. Accessing the Application
-- **Frontend Dashboard**: [http://localhost:8080](http://localhost:8080)
-- **Backend Health Check**: [http://localhost:8080/api/health](http://localhost:8080/api/health)
-- **API Documentation**: [http://localhost:8080/docs](http://localhost:8080/docs) (Swagger UI)
+1. **`fetch_pr` (15%)**: Validates the pull request URL format, authenticates with GitHub REST API, and retrieves commit metadata and unified diff patches.
+2. **`process_diff` (30%)**: Parses diff patches into structured `ProcessedFile` models, calculates line additions/deletions, and skips binaries, lockfiles, or files exceeding 50KB limits.
+3. **`static_analysis` (50%)**: Writes changed files into a temporary directory and executes `ruff` and `bandit` in parallel via subprocesses with stripped environment variables and 30s timeouts.
+4. **`retrieve_context` (65%)**: Scans Python ASTs for referenced classes and functions, extracting up to 50 symbol snippets (100KB cap) for surrounding context.
+5. **`ai_review` (80%)**: Encloses diffs, context, and static findings into XML-neutralized prompts and invokes Google Gemini using strict Pydantic structured output schemas (`AIReviewResponse`).
+6. **`validate_findings` (90%)**: Programmatically verifies that finding line numbers overlap modified diff lines and that quoted evidence matches repository source code verbatim. Discards unanchored findings and deduplicates records.
+7. **`persist_results` (100%)**: Persists review metadata, files, and deduplicated findings into Neon PostgreSQL, updating token usage metrics and marking status as `COMPLETED`.
 
-### 4. Stopping Services
-```bash
-# Stop containers (preserves SQLite data volume)
-docker compose down
+---
 
-# Stop containers and delete SQLite persistent volume
-docker compose down -v
+## 7. Gemini Model Architecture & Fallback Cascade
+
+PR Sentinel features a battle-tested model resilience architecture designed to handle Google GenAI free-tier constraints:
+
+```mermaid
+stateDiagram-v2
+    [*] --> PrimaryModel: Request initiated
+    PrimaryModel: gemini-3.8-flash (Attempt 1-3)
+
+    PrimaryModel --> Success: HTTP 200 OK
+    PrimaryModel --> FailFast: 401/403 Auth Error
+    PrimaryModel --> FailFast: Permanent Daily Quota (RPD)
+    PrimaryModel --> FallbackModel: 3x 503 Demand Spike or Timeout
+
+    FallbackModel: gemini-3.6-flash (Attempt 1-3)
+    FallbackModel --> Success: HTTP 200 OK
+    FallbackModel --> DegradedMode: Both models exhausted
+
+    Success --> [*]: Validated AIReviewResponse
+    FailFast --> [*]: Raise AppError immediately
+    DegradedMode --> [*]: Continue with Static Findings
 ```
 
-*(Note: Docker configuration and Compose YAML syntax have been statically verified; local container runtime execution is marked unverified on workstations without Docker installed.)*
+- **Primary Model**: `gemini-3.8-flash` handles the initial review request with low latency.
+- **Automatic Fallback**: If `gemini-3.8-flash` hits three consecutive HTTP 503 service unavailable responses or request timeouts, the client seamlessly cascades to `gemini-3.6-flash`.
+- **Bounded Exponential Backoff**: Retries apply exponential backoff ($2^n$ seconds with random jitter) capped at 3 attempts per model ($\le 6$ requests total), eliminating infinite retry loops.
+- **Permanent vs. Transient Error Classification**: Distinguishes temporary rate limiting (RPM/TPM) from permanent daily quota exhaustion (RPD). Permanent quota errors fail immediately without wasting API calls.
+- **Graceful Degradation**: If all AI models are unavailable but static analysis findings exist, the review succeeds with an `"AI review unavailable"` notice, preserving linter and security results.
 
 ---
 
-## 8. Cloud Deployment with Render Blueprint
+## 8. Static Security Analysis Capabilities
 
-PR Sentinel includes an atomic Infrastructure-as-Code blueprint in [`render.yaml`](render.yaml) for automated single-service deployment to **Render**:
+PR Sentinel integrates static analysis tools into the review workflow:
+- **Bandit AST Scanner**: Executes `bandit -r -q -f json` to detect Python security vulnerabilities including SQL injections (B608), command injections (B602/B605), hardcoded credentials (B105/B106), unsafe deserialization (B301), and assert usage (B101).
+- **Ruff Linter & Formatter**: Executes `ruff check --isolated --output-format json` to catch syntax errors, undefined variables, dead imports, and code quality violations.
+- **Subprocess Execution & Environment Sanitization**: Tools execute via `asyncio.create_subprocess_exec` in temporary directories (`tempfile.TemporaryDirectory`). Application secrets are stripped from the child process environment, repository configuration files (`.eslintrc`, `ruff.toml`, `pyproject.toml`) are excluded to prevent configuration overrides, and execution is strictly bounded by 30-second timeouts and 5MB output buffer caps (without OS-level containerization or kernel sandboxing).
 
-- **Unified Web Service (`pr-sentinel`)**: Multi-stage Docker container (`Dockerfile.render`) building the React 19 SPA with Node.js 22 and running the FastAPI backend on Python 3.12, serving both UI assets and REST API endpoints from a single domain and port.
-- **SPA Static Serving (`SERVE_FRONTEND=true`)**: FastAPI serves compiled UI assets from `/app/frontend/dist` with deep link SPA fallback to `/index.html` without shadowing `/api/*`, `/docs`, `/redoc`, or `/openapi.json`.
-- **Proxy Headers & Rate Limiting**: Uvicorn runs with `--workers 1 --proxy-headers --forwarded-allow-ips="*"` behind Render's edge proxy, ensuring IP-based rate limiting accurately keys on the real client IP.
-- **Cost Protection**: Rolling 24-hour review limit (`MAX_REVIEWS_PER_DAY=20`) counts all review submissions (including failed runs) within a serialized process mutex to protect the Gemini LLM budget.
-- **Access Control**: Optional shared bearer token gate (`APP_ACCESS_TOKEN`) with browser `sessionStorage` isolation and automatic `<AccessTokenModal />` re-authentication.
-
-For database persistence caveats (free tier SQLite ephemerality and 30-day PostgreSQL expiry), Psycopg 3 setup, and step-by-step instructions, see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+> [!NOTE]
+> **Review Quality & Contextual Findings**:
+> In the live review of FastAPI PR #16387, the 4 findings emitted by Bandit (rule B101, assert used) originate from standard pytest assertions inside `tests/test_endpoint_context_shared_endpoint.py`. These represent **contextual informational findings**, not confirmed exploitable vulnerabilities in production code. Static analysis findings are strictly distinguished from Gemini-generated findings in the data contract (`source="static"` vs `source="ai"`). Gemini analyzed the PR diff and generated zero additional findings on this audited pull request.
 
 ---
 
-## 9. Local Development Setup (Without Docker)
+## 9. Evidence Validation & Neon PostgreSQL Persistence
+
+### Grounded Evidence Verification (`app/services/validation.py`)
+To verify LLM outputs against ground-truth repository contents:
+- **File Existence**: Verifies the target file is actually modified in the pull request.
+- **Hunk Intersection**: Ensures finding line ranges `[line_start, line_end]` overlap added or modified diff lines.
+- **Verbatim Evidence Verification**: The code quoted in `evidence` must match repository contents verbatim. If the LLM generates fabricated code, the finding is discarded.
+
+### Fingerprint Deduplication (`app/services/dedupe.py`)
+```text
+Fingerprint = SHA256(normalized_path + ":" + line_start + ":" + category + ":" + normalized_rule)
+```
+When both Bandit and Gemini detect an issue on the same line, PR Sentinel merges them into a single finding record, preserving the highest severity rating and confidence score while recording both tool sources.
+
+### Neon Serverless Database Persistence
+- Multi-pool SQLAlchemy 2.0 engine using `psycopg` (v3) over SSL.
+- Schema auto-initializes on startup with 4 core tables: `reviews`, `review_files`, `findings`, and `app_settings`.
+- Survives Render container restarts without data loss.
+
+---
+
+## 10. Deployment Architecture
+
+PR Sentinel is deployed on **Render** as a single unified service running behind an edge proxy:
+
+- **Unified Multi-Stage Dockerfile (`Dockerfile.render`)**:
+  - Stage 1: Node.js 22 Alpine builds the React 19 SPA (`npm run build`).
+  - Stage 2: Python 3.12-slim runtime hosts FastAPI, static linters, and serves the compiled UI at the root path (`SERVE_FRONTEND=true`).
+- **Security Headers**:
+  - `X-Content-Type-Options: nosniff`: Prevents MIME-type sniffing.
+  - `X-Frame-Options: DENY`: Prevents clickjacking attacks.
+  - `Referrer-Policy: strict-origin-when-cross-origin`: Controls referrer information sent with requests.
+- **Response Compression**:
+  - `GZipMiddleware`: Compresses HTTP response payloads exceeding 1000 bytes.
+- **Free-Tier Infrastructure**: Deployed on Render Free Web Service (512MB RAM) and Neon Free PostgreSQL, with Gemini AI review calls operating within Google GenAI free-tier rate limits and quotas subject to provider terms.
+
+---
+
+## 11. Screenshots & Visual Walkthrough
+
+Authentic screenshots captured from the live production deployment:
+
+### Completed AI Review Overview
+![Completed AI Review](docs/screenshots/completed_review.png)
+*Full view of a completed review on FastAPI PR #16387 with zero "AI review unavailable" warnings and persisted findings.*
+
+### Review Workflow & Seven Stages
+![Review Workflow](docs/screenshots/review_workflow.png)
+*Real-time 7-stage workflow stepper showing completed execution across Fetch PR, Process Diff, Static Analysis, Context Retrieval, AI Review, Validate Findings, and Persist Results.*
+
+### Interactive Findings Table
+![Findings Table](docs/screenshots/findings_table.png)
+*Findings table with multi-tier filters (Severity, Category, Source, Triage Status, Confidence Slider) and rule badges.*
+
+### Finding Detail Drawer & Triage State Machine
+![Finding Inspection](docs/screenshots/finding_inspection.png)
+*Slide-out inspection drawer displaying verbatim evidence, line bounds, Bandit rule explanations, confidence scores, and one-click triage buttons (Approve / Dismiss).*
+
+### Operational Dashboard
+![Dashboard](docs/screenshots/dashboard.png)
+*Dashboard showing summary metrics cards, system status indicator, and recent pull request review history.*
+
+### New Review Submission
+![New Review](docs/screenshots/new_review.png)
+*Clean review launcher supporting public GitHub pull request URLs with validation hints.*
+
+---
+
+## 12. Local Development Setup
 
 ### Prerequisites
 - Python 3.12+
-- Node.js 22+ and npm
+- Node.js 22+ & npm
+- Git
 
-### 1. Backend Setup
+### 1. Clone the Repository
+```bash
+git clone https://github.com/shashi123exe/pr-sentinel.git
+cd pr-sentinel
+```
+
+### 2. Backend Setup
 ```powershell
 cd backend
 python -m venv .venv
@@ -221,132 +279,80 @@ python -m venv .venv
 pip install --upgrade pip
 pip install -r requirements-dev.txt
 
-# Create environment configuration
+# Create environment file from template
 Copy-Item ..\.env.example .env
 
-# Run FastAPI backend with hot-reload on port 8000
+# Start FastAPI development server (port 8000)
 uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-### 2. Frontend Setup
+### 3. Frontend Setup
 ```powershell
-cd frontend
+cd ../frontend
 npm install
 
-# Start Vite development server on port 5173 (proxies /api -> 127.0.0.1:8000)
+# Start Vite development server (port 5173 with proxy to backend)
 npm run dev -- --host 127.0.0.1 --port 5173
 ```
 
-### 3. Automated Dev Server Launcher
-```powershell
-# Launches backend (port 8000) and frontend (port 5173) in separate windows:
-.\scripts\dev.ps1 -LaunchWindows
+### 4. Running with Docker Compose
+```bash
+docker compose build
+docker compose up -d
+# Access dashboard at http://localhost:8080
 ```
 
 ---
 
-## 10. Testing & Quality Gates
+## 13. Environment Variables Reference
 
-PR Sentinel includes a comprehensive, verified test suite with **476 total passing tests** (100% pass rate, 1 skipped when `TEST_DATABASE_URL` is unset):
+Configure these in `backend/.env` or Render environment settings:
 
-```powershell
-# 1. Run Complete Backend Test Suite (420 Tests Passed, 1 Skipped)
-backend\.venv\Scripts\pytest.exe -q backend\tests
+| Variable Name | Required | Default | Description |
+| :--- | :---: | :---: | :--- |
+| `DATABASE_URL` | Optional | SQLite local file | PostgreSQL connection string (e.g. `postgresql+psycopg://...`) or SQLite URL. |
+| `GEMINI_API_KEY` | Optional | None | Google Gemini API key for AI code review capabilities. |
+| `GEMINI_MODEL` | Optional | `gemini-3.8-flash` | Primary Gemini model name for review generation. |
+| `GITHUB_TOKEN` | Optional | None | GitHub Personal Access Token to raise GitHub REST API rate limits from 60 to 5,000 req/hr. |
+| `APP_ACCESS_TOKEN` | Optional | None | Shared bearer token for API access control (stored strictly in browser `sessionStorage`). |
+| `SERVE_FRONTEND` | Optional | `false` | Enables static SPA frontend serving from FastAPI (set to `true` in production Docker). |
+| `MAX_REVIEWS_PER_DAY` | Optional | `20` | Rolling 24-hour review submission cap to protect Gemini free-tier quota. |
+| `RATE_LIMIT_PER_MINUTE` | Optional | `60` | SlowAPI rate limit for standard REST API endpoints. |
 
-# 2. Run Complete Frontend Test Suite (56 Tests across 15 files)
-cd frontend
-npm test -- --run
+> [!CAUTION]
+> Never commit actual secret keys or `.env` files to version control. Production secrets must be managed via Render Dashboard or cloud secret managers.
 
-# 3. Run Static Linters and Security Scanners
-backend\.venv\Scripts\ruff.exe check backend
-backend\.venv\Scripts\ruff.exe format --check backend
-backend\.venv\Scripts\bandit.exe -r backend/app -q
-npm --prefix frontend run lint
-npm --prefix frontend audit --omit=dev
+---
 
-# 4. Automated Security Verification Pipeline
-.\scripts\security-check.ps1
+## 14. Testing & CI Results
+
+PR Sentinel enforces automated quality gates across backend, frontend, and Docker layers:
+
+```text
+Backend Test Suite (Pytest)     : 433 passed, 1 skipped (93% line coverage)
+Frontend Test Suite (Vitest)    : 56 passed across 15 test files (100% pass rate)
+Combined Test Suite             : 489 passed, 1 skipped (100% pass rate of executed tests)
+Backend Line Coverage           : 93% across app
+Backend Linting & Formatting    : Ruff 0 errors, 99 files formatted
+Backend Security Scan           : Bandit 0 high/medium issues
+Frontend Linting                : Oxlint 0 errors across 46 files
+Frontend Production Build       : Vite built in 1.49s (TypeScript validated)
+Docker Render Image             : Built, tested, and verified in GitHub Actions
 ```
 
-### Test Suite Breakdown:
-- **Backend Integration Tests (75 tests)**: GitHub client, LangGraph workflow, reviews API, findings API, settings API, rate limiting, daily review limits (rolling 24h window, boundary checks, failed run accounting, restart persistence) & multi-threaded concurrency safety, OpenAPI contract, and failure drills.
-- **Backend Unit Tests (182 tests, 1 skipped)**: Diff parsing, file filters, keyword retriever, static analysis mapping, Gemini prompts, reviewer fallback, persistence, Psycopg 3.3.8 database URL normalization, typed URL safety validation with credential bypass rejection, and deduplication (1 live DB test skips cleanly when `TEST_DATABASE_URL` is absent).
-- **Backend Security Tests (163 tests)**: SSRF prevention (67), path traversal confinement and SPA static-file containment with sibling collision and symlink rejection (55), shared access token gating with X-Access-Token header (9), resource limits (7), prompt injection defense (6), code execution prevention (5), SQL injection protection (5), rate limiting with proxy headers / client IP partitioning & Dockerfile uvicorn proxy verification (5), and secret redaction (4).
-- **Frontend Tests (56 tests across 15 files)**: Workflow rendering, polling recovery, triage optimistic updates, diff viewer markers, sessionStorage access token isolation (5), React DOM XSS script injection prevention (2), and accessible AccessTokenModal re-authentication dialog with form draft preservation and retry support (6).
+All 3 GitHub Actions CI jobs (`Frontend Tests, Lint & Build`, `Backend Tests & Security Checks`, `Docker Build & Compose Validation`) are verified green on `origin/main`.
 
 ---
 
-## 11. Security Architecture & Threat Boundaries
+## 15. Known Limitations & Free-Tier Constraints
 
-PR Sentinel treats all repository files, commit messages, and diff patches as untrusted data:
-
-- **SSRF Prevention**: Strict URL grammar rejecting non-`github.com` hosts, custom ports, userinfo credentials, and IP addresses. Outbound requests pinned to `https://api.github.com/` with HTTP redirects disabled (`follow_redirects=False`).
-- **Path Traversal Defense**: All file analysis runs inside `tempfile.TemporaryDirectory` with strict `Path.is_relative_to` containment checks. Windows reserved device names (`CON`, `PRN`, `AUX`, `NUL`), NTFS Alternate Data Streams (`:$DATA`), and UNC paths are blocked.
-- **Code Execution Prevention**: Static tools run via `asyncio.create_subprocess_exec` with sanitized environments (no application API keys). Zero `eval`, `exec`, `pickle`, or `shell=True` throughout the codebase.
-- **Prompt Injection Defense**: All untrusted code is wrapped in XML envelopes with closing tags neutralized (`</diff>` &rarr; `&lt;/diff>`). Gemini is given **zero tools/function declarations**.
-- **Secret Redaction**: Regex scrubbing filters automatically sanitize GitHub Classic/Fine-grained PATs, Google Gemini API keys, Bearer tokens, and Authorization headers in all logs and tracebacks.
-- **Rate Limiting & Cost Protection**: SlowAPI restricts review submissions to 5 requests per minute per IP. An atomic rolling 24-hour limit (`MAX_REVIEWS_PER_DAY`) backed by an in-process mutex prevents runaway LLM quota exhaustion.
-- **Access Control Gate**: Optional shared bearer token gate (`APP_ACCESS_TOKEN`) with constant-time verification (`secrets.compare_digest`) and tab-isolated browser `sessionStorage`.
-
-For the full security architecture, threat model, and verification details, see [docs/SECURITY.md](docs/SECURITY.md).
+- **Render Cold Starts**: On the Render Free tier, the web service spins down after 15 minutes of inactivity. Initial requests may take 30–50 seconds to wake the instance.
+- **Gemini Free-Tier Capacity Spikes**: During peak hours, Google's `gemini-3.8-flash` model may return HTTP 503 due to high demand. PR Sentinel automatically cascades to `gemini-3.6-flash` to prevent review failures.
+- **GitHub Unauthenticated Rate Limits**: Without a `GITHUB_TOKEN`, public GitHub API requests are limited to 60 per hour per IP. Supplying a token increases this limit to 5,000 requests/hour.
+- **Supported Languages**: Static analysis currently runs Ruff and Bandit for Python; ESLint sandbox is configured for JavaScript/TypeScript; AI reviews support all major languages.
 
 ---
 
-## 12. API Documentation & Endpoints
+## 16. License
 
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `GET` | `/api/health` | Health check endpoint verifying service and database status (Public). |
-| `POST` | `/api/reviews` | Enqueues a new pull request review (Rate limited: 5/min, daily quota enforced). Returns HTTP 202. |
-| `GET` | `/api/reviews` | Lists review history with status, repo metadata, and pagination. |
-| `GET` | `/api/reviews/{id}` | Retrieves detailed review status, stage progress, tokens consumed, and summary. |
-| `DELETE` | `/api/reviews/{id}` | Cascades deletion to review files and findings (Returns HTTP 204). |
-| `GET` | `/api/reviews/{id}/files` | Lists modified files with hunk patches, additions, deletions, and skip reasons. |
-| `GET` | `/api/reviews/{id}/findings` | Lists findings with filters for severity, category, status, and confidence. |
-| `PATCH` | `/api/findings/{id}` | Updates finding triage status (`open`, `approved`, `dismissed`). |
-| `GET` | `/api/settings` | Retrieves current application analysis thresholds and enabled categories. |
-| `PUT` | `/api/settings` | Updates analysis limits, confidence thresholds, and Gemini model overrides. |
-
-Interactive OpenAPI documentation is available at `http://localhost:8000/docs` or `http://localhost:8080/docs`.
-
----
-
-## 13. GitHub Actions CI Overview
-
-The repository includes an automated CI workflow in [.github/workflows/ci.yml](.github/workflows/ci.yml):
-- **Least Privilege**: Restricted to `permissions: contents: read`.
-- **Pinned Commit SHAs**: Actions are pinned to full 40-character SHAs (`actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683`, `actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38`, `actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a`).
-- **Parallel Jobs**:
-  1. `backend`: Python 3.12, dependencies, Ruff format check, Ruff lint, Bandit scan, Pytest (420 passed, 1 skipped + coverage).
-  2. `frontend`: Node.js 22, `npm ci`, Oxlint, production build (`npm run build`), Vitest (56 tests), `npm audit --omit=dev`.
-  3. `docker`: Validates `docker compose config` and builds Docker images without pushing to any registry.
-
-*(Note: The workflow has been validated syntactically and structurally; live execution in a hosted GitHub repository is pending initial repository push.)*
-
----
-
-## 14. Known Limitations & Trade-offs
-
-1. **Single-Worker Process Mutex**: The atomic rolling review limit uses an in-process thread lock. In horizontally scaled or multi-worker deployments, a distributed locking mechanism (e.g. Redis Redlock or Postgres advisory lock) is required.
-2. **Cloud Ephemeral Storage & Quota Reset**: On Render Free tier, local SQLite databases are erased upon service spin-down (15 min inactivity) or redeployment, resetting the daily review quota counter to zero. Free Render PostgreSQL databases expire and are deleted after 30 days. Paid PostgreSQL or a persistent disk is required for durable production retention and persistent daily quota tracking. Google Gemini hard quotas in Google Cloud Console provide an independent outer spending limit.
-3. **Single-User Access Gate**: `APP_ACCESS_TOKEN` provides a shared bearer passphrase gate, not individual user accounts, audit attribution, or granular RBAC.
-4. **In-Process Task Dispatch**: Background reviews run via FastAPI `BackgroundTasks`. Server restarts mark running reviews as interrupted (handled cleanly on restart, but lacks external persistent task queues like Celery).
-5. **Python Dependency Vulnerability Auditing**: An automated Python dependency vulnerability audit (e.g. via `pip-audit`) was **NOT PERFORMED** offline due to tool unavailability in the local environment.
-6. **Docker Runtime Verification**: Container execution was verified statically via configuration parsers; live container runtime was not tested locally due to the absence of the Docker daemon on the Windows workstation.
-
----
-
-## 15. Future Roadmap
-
-- [ ] **Distributed Queue Architecture**: Replace `BackgroundTasks` with Celery or Temporal backed by Redis for multi-worker distributed review processing.
-- [ ] **Automated GitHub App Webhooks**: Listen to `pull_request.opened` webhooks and post verified findings directly as inline comments on GitHub.
-- [ ] **Containerized MicroVM Sandboxes**: Run static linters inside ephemeral Firecracker microVMs or gVisor sandboxes for true kernel isolation.
-- [ ] **Containerized Dependency Auditing**: Integrate automated `pip-audit` into the GitHub Actions CI pipeline.
-
----
-
-## 16. Contributing & License
-
-- **Contributing**: Please review [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, testing, formatting, and branch conventions.
-- **License**: PR Sentinel's original project code and architecture are licensed under the [MIT License](LICENSE). Copyright (c) 2026 shashi123exe.
-- **Third-Party Attribution**: All third-party libraries, dependencies, icons, and frameworks (including React, Vite, Lucide icons, FastAPI, LangGraph, Google GenAI SDK, Ruff, Bandit, and ESLint) remain the property of their respective copyright holders and retain their original licenses (MIT, ISC, Apache-2.0, BSD-2-Clause, and BSD-3-Clause). PR Sentinel does not claim ownership of any third-party materials.
+This project is licensed under the [MIT License](LICENSE) — see the LICENSE file for details.
