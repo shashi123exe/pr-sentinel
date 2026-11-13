@@ -7,8 +7,11 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse
 from sqlalchemy import select
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 
 from app.api import api_router
 from app.config import WORKSPACE_DIR, Settings, get_settings
@@ -65,6 +68,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("PR Sentinel backend shutting down.")
 
 
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Enforce standard production security headers on all responses."""
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        response: Response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
+
+
 def create_app(settings_override: Settings | None = None) -> FastAPI:
     """FastAPI application factory with configuration, middleware, and routers."""
     app_settings = settings_override or get_settings()
@@ -81,6 +95,12 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
 
     # Attach SlowAPI state
     application.state.limiter = limiter
+
+    # GZip compression middleware (minimum response size 1000 bytes)
+    application.add_middleware(GZipMiddleware, minimum_size=1000)
+
+    # Security headers middleware
+    application.add_middleware(SecurityHeadersMiddleware)
 
     # Request ID middleware
     application.add_middleware(RequestIDMiddleware)

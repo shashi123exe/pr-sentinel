@@ -110,3 +110,53 @@ jobs:
 
       - name: Build Docker images
         run: docker compose build
+
+      - name: Build Render single-service production image
+        run: docker build -f Dockerfile.render -t pr-sentinel:production .
+
+      - name: Validate Render production container contents
+        run: |
+          echo "Verifying Python application and core dependencies..."
+          docker run --rm pr-sentinel:production /opt/venv/bin/python -c "import fastapi, sqlalchemy, psycopg, pydantic; print('Python dependencies verified')"
+
+          echo "Verifying compiled React production build..."
+          docker run --rm pr-sentinel:production test -f /app/frontend/dist/index.html
+
+          echo "Verifying Node.js runtime..."
+          docker run --rm pr-sentinel:production /usr/local/bin/node --version
+
+          echo "Verifying ESLint executable and installed dependencies..."
+          docker run --rm pr-sentinel:production test -d /app/tools/eslint/node_modules
+          docker run --rm pr-sentinel:production /usr/local/bin/node /app/tools/eslint/node_modules/eslint/bin/eslint.js --version
+
+      - name: Verify Render production container startup and health check
+        run: |
+          echo "Starting Render production container in background..."
+          CONTAINER_ID=$(docker run -d -p 10000:10000 -e SERVE_FRONTEND=true pr-sentinel:production)
+
+          echo "Waiting for health check endpoint to respond..."
+          HEALTHY=0
+          for i in $(seq 1 30); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:10000/api/health || true)
+            if [ "$STATUS" = "200" ]; then
+              echo "Health check succeeded with HTTP 200 after ${i}s"
+              HEALTHY=1
+              break
+            fi
+            sleep 1
+          done
+
+          echo "Container logs:"
+          docker logs "$CONTAINER_ID"
+
+          echo "Health endpoint response payload:"
+          curl -s http://localhost:10000/api/health || true
+          echo ""
+
+          docker stop "$CONTAINER_ID"
+          docker rm "$CONTAINER_ID"
+
+          if [ "$HEALTHY" -ne 1 ]; then
+            echo "Health check failed!"
+            exit 1
+          fi
