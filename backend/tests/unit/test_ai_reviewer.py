@@ -561,10 +561,10 @@ def test_sensitive_api_keys_never_exposed_in_exceptions():
             assert secret_value not in exc.message
 
 
-# Scenario 18: Deprecated 404 model falls back to gemini-3.5-flash
+# Scenario 18: Deprecated 404 model falls back to gemini-3.6-flash
 @pytest.mark.asyncio
-async def test_deprecated_model_falls_back_to_gemini_35():
-    """Verify 404 on legacy model triggers fallback to gemini-3.5-flash."""
+async def test_deprecated_model_falls_back_to_gemini_36():
+    """Verify 404 on legacy model triggers fallback to gemini-3.6-flash."""
     mock_genai_client = AsyncMock()
 
     class MockResp:
@@ -572,7 +572,7 @@ async def test_deprecated_model_falls_back_to_gemini_35():
         usage_metadata = None
         candidates = []
 
-    # First call with legacy model raises 404, second call succeeds with 3.5-flash
+    # First call with legacy model raises 404, second call succeeds with 3.6-flash
     mock_genai_client.aio.models.generate_content.side_effect = [
         Exception("404 NOT_FOUND. Model is no longer available to new users."),
         MockResp(),
@@ -585,14 +585,14 @@ async def test_deprecated_model_falls_back_to_gemini_35():
     assert resp.findings == []
     assert mock_genai_client.aio.models.generate_content.call_count == 2
     args = mock_genai_client.aio.models.generate_content.call_args_list[1]
-    assert args.kwargs["model"] == "gemini-3.5-flash"
+    assert args.kwargs["model"] == "gemini-3.6-flash"
 
 
 # Scenario 19: High-demand 503 or 429 rate limit on gemini-3.8-flash
-# falls back to gemini-3.5-flash
+# falls back to gemini-3.6-flash
 @pytest.mark.asyncio
-async def test_gemini_38_exhausted_retries_falls_back_to_gemini_35():
-    """Verify 429/503 on gemini-3.8-flash falls back to gemini-3.5-flash."""
+async def test_gemini_38_exhausted_retries_falls_back_to_gemini_36():
+    """Verify 429/503 on gemini-3.8-flash falls back to gemini-3.6-flash."""
     mock_genai_client = AsyncMock()
 
     class MockResp:
@@ -600,7 +600,7 @@ async def test_gemini_38_exhausted_retries_falls_back_to_gemini_35():
         usage_metadata = None
         candidates = []
 
-    # 3 attempts with 3.8-flash fail with 429 quota, fallback to 3.5-flash succeeds
+    # 3 attempts with 3.8-flash fail with 429 quota, fallback to 3.6-flash succeeds
     mock_genai_client.aio.models.generate_content.side_effect = [
         Exception("429 RESOURCE_EXHAUSTED. Quota exceeded."),
         Exception("429 RESOURCE_EXHAUSTED. Quota exceeded."),
@@ -617,4 +617,333 @@ async def test_gemini_38_exhausted_retries_falls_back_to_gemini_35():
     assert resp.findings == []
     assert mock_genai_client.aio.models.generate_content.call_count == 4
     args = mock_genai_client.aio.models.generate_content.call_args_list[3]
-    assert args.kwargs["model"] == "gemini-3.5-flash"
+    assert args.kwargs["model"] == "gemini-3.6-flash"
+
+
+# Scenario 20: Primary model gemini-3.8-flash succeeds on first attempt
+@pytest.mark.asyncio
+async def test_primary_model_gemini_38_succeeds_first_attempt():
+    """Verify primary model gemini-3.8-flash succeeds without retries or fallback."""
+    mock_genai_client = AsyncMock()
+
+    class MockResp:
+        text = '{"findings": []}'
+        usage_metadata = None
+        candidates = []
+
+    mock_genai_client.aio.models.generate_content.return_value = MockResp()
+
+    client = GeminiClient(api_key=SecretStr("fake-key"))
+    client._sdk_client = mock_genai_client
+
+    resp, tokens_in, tokens_out = await client.generate_review(
+        "prompt", "sys", "gemini-3.8-flash"
+    )
+    assert resp.findings == []
+    assert mock_genai_client.aio.models.generate_content.call_count == 1
+    args = mock_genai_client.aio.models.generate_content.call_args_list[0]
+    assert args.kwargs["model"] == "gemini-3.8-flash"
+
+
+# Scenario 21: Primary model returns 503, then succeeds on retry
+@pytest.mark.asyncio
+async def test_primary_model_returns_503_then_succeeds_on_retry():
+    """Verify transient 503 retries on the same model and succeeds."""
+    mock_genai_client = AsyncMock()
+
+    class MockResp:
+        text = '{"findings": []}'
+        usage_metadata = None
+        candidates = []
+
+    mock_genai_client.aio.models.generate_content.side_effect = [
+        Exception("503 UNAVAILABLE. This model is currently experiencing high demand."),
+        MockResp(),
+    ]
+
+    client = GeminiClient(api_key=SecretStr("fake-key"))
+    client._sdk_client = mock_genai_client
+
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        resp, _, _ = await client.generate_review("prompt", "sys", "gemini-3.8-flash")
+
+    assert resp.findings == []
+    assert mock_genai_client.aio.models.generate_content.call_count == 2
+    # Both attempts must use the primary model
+    for call_arg in mock_genai_client.aio.models.generate_content.call_args_list:
+        assert call_arg.kwargs["model"] == "gemini-3.8-flash"
+
+
+# Scenario 22: Primary model times out and fallback to gemini-3.6-flash succeeds
+@pytest.mark.asyncio
+async def test_primary_model_times_out_and_fallback_succeeds():
+    """Verify timeout exhaustion on gemini-3.8-flash cascades to gemini-3.6-flash."""
+    mock_genai_client = AsyncMock()
+
+    class MockResp:
+        text = '{"findings": []}'
+        usage_metadata = None
+        candidates = []
+
+    # 3 timeout attempts on gemini-3.8-flash, then fallback to gemini-3.6-flash succeeds
+    mock_genai_client.aio.models.generate_content.side_effect = [
+        TimeoutError("Request timed out after 60.0s"),
+        Exception("503 UNAVAILABLE. Spike in demand."),
+        TimeoutError("Request timed out after 60.0s"),
+        MockResp(),
+    ]
+
+    client = GeminiClient(api_key=SecretStr("fake-key"))
+    client._sdk_client = mock_genai_client
+
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        resp, _, _ = await client.generate_review("prompt", "sys", "gemini-3.8-flash")
+
+    assert resp.findings == []
+    assert mock_genai_client.aio.models.generate_content.call_count == 4
+    # First 3 attempts used gemini-3.8-flash
+    for i in range(3):
+        assert (
+            mock_genai_client.aio.models.generate_content.call_args_list[i].kwargs[
+                "model"
+            ]
+            == "gemini-3.8-flash"
+        )
+    # 4th attempt used gemini-3.6-flash
+    assert (
+        mock_genai_client.aio.models.generate_content.call_args_list[3].kwargs["model"]
+        == "gemini-3.6-flash"
+    )
+
+
+# Scenario 23: Both models fail and client raises ai_unavailable
+@pytest.mark.asyncio
+async def test_both_models_fail_and_raises_ai_unavailable():
+    """Verify bounded failure across both models raises ai_unavailable."""
+    mock_genai_client = AsyncMock()
+
+    # 3 failures on gemini-3.8-flash, 3 failures on gemini-3.6-flash
+    mock_genai_client.aio.models.generate_content.side_effect = [
+        TimeoutError("Timed out"),
+        Exception("503 UNAVAILABLE"),
+        TimeoutError("Timed out"),
+        Exception("503 UNAVAILABLE"),
+        TimeoutError("Timed out"),
+        Exception("503 UNAVAILABLE"),
+    ]
+
+    client = GeminiClient(api_key=SecretStr("fake-key"))
+    client._sdk_client = mock_genai_client
+
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        with pytest.raises(AppError) as exc_info:
+            await client.generate_review("prompt", "sys", "gemini-3.8-flash")
+
+    assert exc_info.value.code == "ai_unavailable"
+    assert exc_info.value.status_code == 503
+    # Exactly 6 bounded attempts: 3 for 3.8-flash + 3 for 3.6-flash
+    assert mock_genai_client.aio.models.generate_content.call_count == 6
+    calls = mock_genai_client.aio.models.generate_content.call_args_list
+    for i in range(3):
+        assert calls[i].kwargs["model"] == "gemini-3.8-flash"
+    for i in range(3, 6):
+        assert calls[i].kwargs["model"] == "gemini-3.6-flash"
+
+
+# Scenario 24: Authentication failure does not trigger fallback or retries
+@pytest.mark.asyncio
+async def test_auth_failure_does_not_trigger_fallback_or_retries():
+    """Verify 401/UNAUTHENTICATED fails immediately without retrying or falling back."""
+    mock_genai_client = AsyncMock()
+
+    mock_genai_client.aio.models.generate_content.side_effect = Exception(
+        "401 UNAUTHENTICATED. API key not valid. Please pass a valid API key."
+    )
+
+    client = GeminiClient(api_key=SecretStr("fake-key"))
+    client._sdk_client = mock_genai_client
+
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        with pytest.raises(AppError) as exc_info:
+            await client.generate_review("prompt", "sys", "gemini-3.8-flash")
+
+    assert exc_info.value.code == "ai_not_configured"
+    # Must fail immediately on attempt 1 without retries or fallback
+    assert mock_genai_client.aio.models.generate_content.call_count == 1
+    call = mock_genai_client.aio.models.generate_content.call_args_list[0]
+    assert call.kwargs["model"] == "gemini-3.8-flash"
+
+
+# Scenario 25: Permission error (403) fails immediately without retry or fallback
+@pytest.mark.asyncio
+async def test_permission_403_fails_immediately_without_retries_or_fallback():
+    """Verify 403/PERMISSION_DENIED fails immediately without retrying."""
+    mock_genai_client = AsyncMock()
+
+    mock_genai_client.aio.models.generate_content.side_effect = Exception(
+        "403 PERMISSION_DENIED. The caller does not have permission."
+    )
+
+    client = GeminiClient(api_key=SecretStr("fake-key"))
+    client._sdk_client = mock_genai_client
+
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        with pytest.raises(AppError) as exc_info:
+            await client.generate_review("prompt", "sys", "gemini-3.8-flash")
+
+    assert exc_info.value.code == "ai_unavailable"
+    assert exc_info.value.status_code == 403
+    # Must fail immediately on attempt 1 without retries or fallback
+    assert mock_genai_client.aio.models.generate_content.call_count == 1
+    call = mock_genai_client.aio.models.generate_content.call_args_list[0]
+    assert call.kwargs["model"] == "gemini-3.8-flash"
+
+
+# Scenario 26: Permanent daily quota exhaustion fails immediately without retries
+@pytest.mark.asyncio
+async def test_permanent_daily_quota_exhaustion_fails_immediately():
+    """Verify daily quota limit error fails immediately without retrying or fallback."""
+    mock_genai_client = AsyncMock()
+
+    mock_genai_client.aio.models.generate_content.side_effect = Exception(
+        "429 RESOURCE_EXHAUSTED. Quota exceeded for quota metric "
+        "'GenerateContent requests per day' and limit 'Requests per day'."
+    )
+
+    client = GeminiClient(api_key=SecretStr("fake-key"))
+    client._sdk_client = mock_genai_client
+
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        with pytest.raises(AppError) as exc_info:
+            await client.generate_review("prompt", "sys", "gemini-3.8-flash")
+
+    assert exc_info.value.code == "ai_rate_limited"
+    assert exc_info.value.status_code == 429
+    # Must NOT attempt retries or switch models on permanent daily exhaustion
+    assert mock_genai_client.aio.models.generate_content.call_count == 1
+    call = mock_genai_client.aio.models.generate_content.call_args_list[0]
+    assert call.kwargs["model"] == "gemini-3.8-flash"
+
+
+# Scenario 27: Three consecutive 503s trigger fallback to 3.6-flash
+@pytest.mark.asyncio
+async def test_three_consecutive_503_triggers_fallback_and_returns_valid_response():
+    """Verify 3 consecutive 503s on 3.8-flash fall back to 3.6-flash and succeed."""
+    mock_genai_client = AsyncMock()
+
+    valid_json = (
+        '{"findings": [{"file_path": "app/main.py", "line_start": 10, '
+        '"line_end": 12, "title": "SQL Injection", "severity": "critical", '
+        '"category": "security", "tool_name": "gemini", "rule_id": "GEMINI_SEC", '
+        '"evidence": "raw sql", "explanation": "unparameterized sql query", '
+        '"suggested_fix": "use bound params", "confidence": 0.95}]}'
+    )
+
+    class MockResp:
+        text = valid_json
+        usage_metadata = None
+        candidates = []
+
+    mock_genai_client.aio.models.generate_content.side_effect = [
+        Exception("503 UNAVAILABLE. High demand spike."),
+        Exception("503 UNAVAILABLE. High demand spike."),
+        Exception("503 UNAVAILABLE. High demand spike."),
+        MockResp(),
+    ]
+
+    client = GeminiClient(api_key=SecretStr("fake-key"))
+    client._sdk_client = mock_genai_client
+
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        resp, tokens_in, tokens_out = await client.generate_review(
+            "prompt", "sys", "gemini-3.8-flash"
+        )
+
+    assert len(resp.findings) == 1
+    assert resp.findings[0].title == "SQL Injection"
+    assert resp.findings[0].severity == Severity.CRITICAL
+    assert mock_genai_client.aio.models.generate_content.call_count == 4
+    for i in range(3):
+        assert (
+            mock_genai_client.aio.models.generate_content.call_args_list[i].kwargs[
+                "model"
+            ]
+            == "gemini-3.8-flash"
+        )
+    assert (
+        mock_genai_client.aio.models.generate_content.call_args_list[3].kwargs["model"]
+        == "gemini-3.6-flash"
+    )
+
+
+# Scenario 28: Transient 429 throttling succeeds on retry without fallback
+@pytest.mark.asyncio
+async def test_transient_429_throttling_succeeds_on_retry():
+    """Verify temporary rate-limiting retries and succeeds on primary model."""
+    mock_genai_client = AsyncMock()
+
+    class MockResp:
+        text = '{"findings": []}'
+        usage_metadata = None
+        candidates = []
+
+    mock_genai_client.aio.models.generate_content.side_effect = [
+        Exception("429 RESOURCE_EXHAUSTED. Rate limit exceeded. Please retry in 2s."),
+        MockResp(),
+    ]
+
+    client = GeminiClient(api_key=SecretStr("fake-key"))
+    client._sdk_client = mock_genai_client
+
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        resp, _, _ = await client.generate_review("prompt", "sys", "gemini-3.8-flash")
+
+    assert resp.findings == []
+    assert mock_genai_client.aio.models.generate_content.call_count == 2
+    for call_arg in mock_genai_client.aio.models.generate_content.call_args_list:
+        assert call_arg.kwargs["model"] == "gemini-3.8-flash"
+
+
+# Scenario 29: Both models exhausted produce graceful ai_unavailable in reviewer
+@pytest.mark.asyncio
+async def test_both_models_exhausted_produces_graceful_ai_unavailable():
+    """Verify AIReviewer handles ai_unavailable error gracefully after
+    all models are exhausted.
+    """
+    from app.schemas.analysis import StaticFinding
+
+    mock_client = AsyncMock()
+    mock_client.generate_review.side_effect = AppError(
+        code="ai_unavailable",
+        message="Gemini API failed after maximum retry attempts.",
+        status_code=503,
+    )
+
+    static_finding = StaticFinding(
+        file_path="app/login.py",
+        line_start=1,
+        line_end=2,
+        title="Static issue",
+        severity=Severity.MEDIUM,
+        category=Category.CODE_QUALITY,
+        tool_name="ruff",
+        rule_id="E501",
+        evidence="line too long",
+        explanation="long line",
+        confidence=1.0,
+    )
+
+    reviewer = AIReviewer(
+        client=mock_client,
+        settings=AppSettings(gemini_model="gemini-3.8-flash"),
+    )
+    result = await reviewer.review(
+        metadata=sample_metadata(),
+        files=[sample_file()],
+        static_findings=[static_finding],
+    )
+
+    # Reviewer records error without raising unhandled exception
+    assert result.findings == []
+    assert len(result.errors) == 1
+    assert "ai_unavailable" in result.errors[0]

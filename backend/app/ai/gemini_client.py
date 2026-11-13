@@ -73,6 +73,11 @@ def resolve_gemini_config(
     return model_name, settings.GEMINI_API_KEY
 
 
+FALLBACK_MODELS: dict[str, str] = {
+    "gemini-3.8-flash": "gemini-3.6-flash",
+}
+
+
 class GeminiClientProtocol(Protocol):
     """Protocol for Gemini AI review client to enable dependency injection."""
 
@@ -232,12 +237,26 @@ class GeminiClient:
 
             except TimeoutError as timeout_exc:
                 logger.warning(
-                    "Gemini request timed out on attempt %d/%d (%.1fs)",
+                    "Gemini request timed out on attempt %d/%d (%.1fs) for model %s",
                     attempt,
                     MAX_RETRY_ATTEMPTS,
                     self.timeout_seconds,
+                    active_model,
                 )
                 if attempt >= MAX_RETRY_ATTEMPTS:
+                    fallback_model = FALLBACK_MODELS.get(active_model)
+                    if fallback_model:
+                        logger.warning(
+                            "%s timed out across %d attempts; falling back to %s",
+                            active_model,
+                            MAX_RETRY_ATTEMPTS,
+                            fallback_model,
+                        )
+                        active_model = fallback_model
+                        attempt = 0
+                        backoff = INITIAL_BACKOFF_SECONDS
+                        continue
+
                     raise AppError(
                         code="ai_unavailable",
                         message="Gemini API request timed out.",
@@ -248,7 +267,69 @@ class GeminiClient:
                 err_str = str(exc)
                 status_code = getattr(exc, "code", None)
 
-                # Fall back to gemini-3.5-flash if legacy model returns 404 (deprecated)
+                # 1. Non-retryable authentication or permission errors
+                is_auth_error = (
+                    status_code in {401, 403}
+                    or any(code in err_str for code in ["401", "403"])
+                    or any(
+                        token in err_str.upper()
+                        for token in [
+                            "UNAUTHENTICATED",
+                            "PERMISSION_DENIED",
+                            "API_KEY_INVALID",
+                            "INVALID_API_KEY",
+                        ]
+                    )
+                )
+                if is_auth_error:
+                    logger.error(
+                        "Non-retryable auth/permission error for Gemini API: %s",
+                        err_str[:200],
+                    )
+                    resolved_status = (
+                        403
+                        if (
+                            status_code == 403
+                            or "403" in err_str
+                            or "PERMISSION_DENIED" in err_str.upper()
+                        )
+                        else (status_code or 401)
+                    )
+                    raise AppError(
+                        code="ai_not_configured"
+                        if resolved_status == 401
+                        else "ai_unavailable",
+                        message="Gemini API authentication or permission failed.",
+                        status_code=resolved_status,
+                    ) from exc
+
+                # 2. Permanent quota exhaustion (daily limit, billing, account cap)
+                # Distinct from temporary per-minute rate limiting (RPM/TPM throttling)
+                is_permanent_quota = any(
+                    phrase in err_str.lower()
+                    for phrase in [
+                        "per day",
+                        "daily quota",
+                        "requests per day",
+                        "queries per day",
+                        "check your plan and billing details",
+                        "insufficient quota",
+                        "billing is not enabled",
+                        "billing_disabled",
+                    ]
+                )
+                if is_permanent_quota:
+                    logger.error(
+                        "Permanent Gemini quota exhaustion detected: %s",
+                        err_str[:200],
+                    )
+                    raise AppError(
+                        code="ai_rate_limited",
+                        message="Gemini API daily quota exceeded.",
+                        status_code=429,
+                    ) from exc
+
+                # 3. Fall back to gemini-3.6-flash if model returns 404
                 is_not_found = (
                     status_code == 404
                     or "404" in err_str
@@ -258,16 +339,20 @@ class GeminiClient:
                     "gemini-2.5-pro",
                     "gemini-2.5-flash",
                 ):
-                    logger.warning(
-                        "Model %s is unavailable; falling back to gemini-3.5-flash",
-                        active_model,
+                    fallback_model = FALLBACK_MODELS.get(
+                        active_model, "gemini-3.6-flash"
                     )
-                    active_model = "gemini-3.5-flash"
+                    logger.warning(
+                        "Model %s is unavailable; falling back to %s",
+                        active_model,
+                        fallback_model,
+                    )
+                    active_model = fallback_model
                     attempt = 0
                     backoff = INITIAL_BACKOFF_SECONDS
                     continue
 
-                # Check rate limiting (429 or ResourceExhausted)
+                # 4. Check rate limiting (429) or transient server errors (500-504)
                 is_rate_limited = (
                     status_code == 429
                     or "429" in err_str
@@ -281,29 +366,21 @@ class GeminiClient:
 
                 if is_rate_limited or is_transient_server:
                     logger.warning(
-                        "Transient Gemini failure on attempt %d/%d: %s. Retrying...",
+                        "Transient failure attempt %d/%d (%s): %s. Retrying...",
                         attempt,
                         MAX_RETRY_ATTEMPTS,
+                        active_model,
                         err_str[:150],
                     )
                     if attempt >= MAX_RETRY_ATTEMPTS:
-                        # Fallback from 3.8-flash to 3.5-flash on rate limit
-                        # or 503 high demand spike
-                        if active_model == "gemini-3.8-flash":
+                        fallback_model = FALLBACK_MODELS.get(active_model)
+                        if fallback_model:
                             logger.warning(
-                                "gemini-3.8-flash capacity/quota exhausted retries; "
-                                "falling back to gemini-3.5-flash"
+                                "%s exhausted retries; falling back to %s",
+                                active_model,
+                                fallback_model,
                             )
-                            active_model = "gemini-3.5-flash"
-                            attempt = 0
-                            backoff = INITIAL_BACKOFF_SECONDS
-                            continue
-                        if active_model == "gemini-3.5-flash":
-                            logger.warning(
-                                "gemini-3.5-flash exhausted retries; "
-                                "falling back to gemini-flash-lite-latest"
-                            )
-                            active_model = "gemini-flash-lite-latest"
+                            active_model = fallback_model
                             attempt = 0
                             backoff = INITIAL_BACKOFF_SECONDS
                             continue
