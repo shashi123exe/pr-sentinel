@@ -10,7 +10,7 @@
 [![LangGraph](https://img.shields.io/badge/LangGraph-1.2.19-orange.svg)](https://github.com/langchain-ai/langgraph)
 [![PostgreSQL](https://img.shields.io/badge/Database-Neon%20Serverless%20Postgres-4169e1.svg)](https://neon.tech/)
 [![Coverage](https://img.shields.io/badge/Coverage-93%25-success.svg)](docs/ARCHITECTURE.md)
-[![Tests Passing](https://img.shields.io/badge/Tests-489%20Passed%2C%201%20Skipped-success.svg)](docs/DEMO_GUIDE.md)
+[![Tests Passing](https://img.shields.io/badge/Tests-489%20Passed%2C%201%20Skipped-success.svg)](#15-testing--ci-results)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ---
@@ -22,7 +22,6 @@
 - **Live Production URL**: [https://pr-sentinel-btyl.onrender.com](https://pr-sentinel-btyl.onrender.com)
 - **Source Code Repository**: [https://github.com/shashi123exe/pr-sentinel](https://github.com/shashi123exe/pr-sentinel)
 - **Real-World PR Validation Cases**: [docs/VALIDATION_CASES.md](docs/VALIDATION_CASES.md)
-- **Interactive Technical Walkthrough**: [docs/DEMO_GUIDE.md](docs/DEMO_GUIDE.md)
 - **Deep-Dive System Architecture**: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
 ---
