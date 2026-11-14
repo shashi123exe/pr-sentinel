@@ -1,7 +1,13 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AccessTokenModal } from '../components/common/AccessTokenModal';
-import { ACCESS_TOKEN_STORAGE_KEY, getAccessToken, setAccessToken } from '../api/client';
+import {
+  ACCESS_TOKEN_STORAGE_KEY,
+  getAccessToken,
+  isDeviceRemembered,
+  REMEMBER_DEVICE_STORAGE_KEY,
+  setAccessToken,
+} from '../api/client';
 
 describe('AccessTokenModal Component', () => {
   beforeEach(() => {
@@ -27,7 +33,14 @@ describe('AccessTokenModal Component', () => {
     expect(screen.getByRole('heading', { name: /api access token required/i })).toBeInTheDocument();
   });
 
-  it('saves token strictly in sessionStorage and closes modal on submit', () => {
+  it('defaults the "Remember this device" checkbox to unchecked', () => {
+    render(<AccessTokenModal isOpen={true} />);
+    const checkbox = screen.getByTestId('remember-device-checkbox') as HTMLInputElement;
+    expect(checkbox).toBeInTheDocument();
+    expect(checkbox.checked).toBe(false);
+  });
+
+  it('saves token strictly in sessionStorage when "Remember this device" is unchecked', () => {
     const mockSuccess = vi.fn();
     const tokenUpdatedListener = vi.fn();
     window.addEventListener('pr-sentinel:token-updated', tokenUpdatedListener);
@@ -35,18 +48,22 @@ describe('AccessTokenModal Component', () => {
     render(<AccessTokenModal isOpen={true} onSuccess={mockSuccess} />);
 
     const input = screen.getByLabelText(/x-access-token/i);
-    fireEvent.change(input, { target: { value: 'sentinel-token-secret-123' } });
+    fireEvent.change(input, { target: { value: 'session-token-secret-123' } });
+
+    const checkbox = screen.getByTestId('remember-device-checkbox') as HTMLInputElement;
+    expect(checkbox.checked).toBe(false);
 
     const submitBtn = screen.getByRole('button', { name: /save & continue/i });
     fireEvent.click(submitBtn);
 
     // Stored strictly in sessionStorage
-    expect(getAccessToken()).toBe('sentinel-token-secret-123');
-    expect(sessionStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)).toBe('sentinel-token-secret-123');
+    expect(getAccessToken()).toBe('session-token-secret-123');
+    expect(sessionStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)).toBe('session-token-secret-123');
+    expect(isDeviceRemembered()).toBe(false);
 
     // Never stored in localStorage
     expect(localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)).toBeNull();
-    expect(localStorage.length).toBe(0);
+    expect(localStorage.getItem(REMEMBER_DEVICE_STORAGE_KEY)).toBeNull();
 
     // Dispatches token-updated event without reloading page
     expect(tokenUpdatedListener).toHaveBeenCalledTimes(1);
@@ -55,17 +72,44 @@ describe('AccessTokenModal Component', () => {
     window.removeEventListener('pr-sentinel:token-updated', tokenUpdatedListener);
   });
 
-  it('allows clearing the stored token from sessionStorage', () => {
-    setAccessToken('existing-session-token');
+  it('saves token in localStorage and sets remember flag when "Remember this device" is checked', () => {
+    const mockSuccess = vi.fn();
+    render(<AccessTokenModal isOpen={true} onSuccess={mockSuccess} />);
+
+    const input = screen.getByLabelText(/x-access-token/i);
+    fireEvent.change(input, { target: { value: 'persistent-token-secret-456' } });
+
+    const checkbox = screen.getByTestId('remember-device-checkbox');
+    fireEvent.click(checkbox);
+    expect((checkbox as HTMLInputElement).checked).toBe(true);
+
+    const submitBtn = screen.getByRole('button', { name: /save & continue/i });
+    fireEvent.click(submitBtn);
+
+    // Stored in both sessionStorage and localStorage
+    expect(getAccessToken()).toBe('persistent-token-secret-456');
+    expect(sessionStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)).toBe('persistent-token-secret-456');
+    expect(localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)).toBe('persistent-token-secret-456');
+    expect(localStorage.getItem(REMEMBER_DEVICE_STORAGE_KEY)).toBe('true');
+    expect(isDeviceRemembered()).toBe(true);
+    expect(mockSuccess).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows clearing the stored token from all storage locations', () => {
+    setAccessToken('existing-device-token', true);
     render(<AccessTokenModal isOpen={true} />);
 
-    expect(getAccessToken()).toBe('existing-session-token');
+    expect(getAccessToken()).toBe('existing-device-token');
+    expect(isDeviceRemembered()).toBe(true);
 
     const clearBtn = screen.getByRole('button', { name: /clear token/i });
     fireEvent.click(clearBtn);
 
     expect(getAccessToken()).toBeNull();
     expect(sessionStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(REMEMBER_DEVICE_STORAGE_KEY)).toBeNull();
+    expect(isDeviceRemembered()).toBe(false);
   });
 
   it('closes on cancel button click or Escape key press', () => {

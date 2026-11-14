@@ -16,6 +16,7 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
 }) => {
   const [internalIsOpen, setInternalIsOpen] = useState<boolean>(false);
   const [tokenInput, setTokenInput] = useState<string>(() => apiClient.getAccessToken() || '');
+  const [rememberDevice, setRememberDevice] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -71,14 +72,14 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
       return;
     }
 
-    // Save strictly to sessionStorage per security design
-    apiClient.setAccessToken(trimmed);
+    // Persist according to user choice: sessionStorage or localStorage
+    apiClient.setAccessToken(trimmed, rememberDevice);
     setErrorMsg(null);
 
     // Notify listeners across the app that token was updated (without destroying user drafts via reload)
     window.dispatchEvent(
       new CustomEvent('pr-sentinel:token-updated', {
-        detail: { token: trimmed },
+        detail: { token: trimmed, rememberDevice },
       })
     );
 
@@ -91,7 +92,8 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
   const handleClear = () => {
     apiClient.clearAccessToken();
     setTokenInput('');
-    setErrorMsg('Access token removed from this session.');
+    setRememberDevice(false);
+    setErrorMsg('Access token removed from this session and device storage.');
   };
 
   if (!isVisible) return null;
@@ -133,7 +135,7 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
           <div className="modal-body">
             <p id="access-token-desc" className="modal-message mb-3 text-sm text-muted">
               This PR Sentinel server enforces access control via <code className="font-mono">APP_ACCESS_TOKEN</code>.
-              Your token will be saved strictly in <span className="font-semibold">sessionStorage</span> for this browser tab only.
+              Enter your shared access token below to authenticate API requests.
             </p>
 
             {errorMsg && (
@@ -160,6 +162,24 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
                 }}
                 autoComplete="off"
               />
+            </div>
+
+            <div className="form-group mt-3" style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+              <input
+                id="modal-remember-device"
+                type="checkbox"
+                checked={rememberDevice}
+                onChange={(e) => setRememberDevice(e.target.checked)}
+                className="checkbox-input"
+                style={{ marginTop: '0.2rem' }}
+                data-testid="remember-device-checkbox"
+              />
+              <label htmlFor="modal-remember-device" className="text-xs text-muted" style={{ cursor: 'pointer' }}>
+                <span className="font-semibold text-body" style={{ display: 'block' }}>Remember this device</span>
+                <span>
+                  Saves token in persistent localStorage across browser restarts. Unchecked: stores in sessionStorage for this tab only.
+                </span>
+              </label>
             </div>
           </div>
 

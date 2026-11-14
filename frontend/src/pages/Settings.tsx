@@ -31,9 +31,22 @@ export const Settings: React.FC = () => {
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [reloadTrigger, setReloadTrigger] = useState<number>(0);
 
-  // Session Access Token state (ephemeral to sessionStorage)
+  // Access Token state (sessionStorage or localStorage)
   const [sessionToken, setSessionToken] = useState<string>(() => apiClient.getAccessToken() || '');
+  const [rememberDevice, setRememberDevice] = useState<boolean>(() => apiClient.isDeviceRemembered());
   const [tokenMessage, setTokenMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleTokenUpdated = () => {
+      setSessionToken(apiClient.getAccessToken() || '');
+      setRememberDevice(apiClient.isDeviceRemembered());
+    };
+
+    window.addEventListener('pr-sentinel:token-updated', handleTokenUpdated);
+    return () => {
+      window.removeEventListener('pr-sentinel:token-updated', handleTokenUpdated);
+    };
+  }, []);
 
   useEffect(() => {
     const active = { current: true };
@@ -369,13 +382,13 @@ export const Settings: React.FC = () => {
         </div>
       </form>
 
-      {/* Session Access Token Card */}
+      {/* Access Token Management Card */}
       <div className="card mt-6" data-testid="access-token-card">
         <div className="card-header">
-          <h2 className="card-title text-base">API Access Token (Browser Session)</h2>
+          <h2 className="card-title text-base">API Access Token &amp; Authentication</h2>
           <p className="card-subtitle text-xs text-muted">
-            If your PR Sentinel instance enforces APP_ACCESS_TOKEN, enter the shared token here.
-            Stored strictly in sessionStorage for this tab only, never persisted to disk or exposed in URLs.
+            If your PR Sentinel instance enforces APP_ACCESS_TOKEN, manage your authentication credentials here.
+            You can keep the token isolated to this session or remember it across browser restarts.
           </p>
         </div>
         <div className="card-body">
@@ -400,8 +413,15 @@ export const Settings: React.FC = () => {
                 type="button"
                 className="btn btn-secondary"
                 onClick={() => {
-                  apiClient.setAccessToken(sessionToken);
-                  setTokenMessage(sessionToken ? 'Access token saved for this browser session.' : 'Token cleared.');
+                  apiClient.setAccessToken(sessionToken, rememberDevice);
+                  setTokenMessage(
+                    sessionToken
+                      ? rememberDevice
+                        ? 'Access token saved and remembered on this device.'
+                        : 'Access token saved for this browser session.'
+                      : 'Token cleared.'
+                  );
+                  window.dispatchEvent(new CustomEvent('pr-sentinel:token-updated'));
                   setReloadTrigger((prev) => prev + 1);
                 }}
               >
@@ -414,14 +434,35 @@ export const Settings: React.FC = () => {
                   onClick={() => {
                     apiClient.clearAccessToken();
                     setSessionToken('');
-                    setTokenMessage('Access token cleared from session.');
+                    setRememberDevice(false);
+                    setTokenMessage('Logged out. Access token cleared from all browser storage.');
+                    window.dispatchEvent(new CustomEvent('pr-sentinel:unauthorized'));
                     setReloadTrigger((prev) => prev + 1);
                   }}
+                  data-testid="logout-btn"
                 >
-                  Clear
+                  Log Out
                 </button>
               )}
             </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.75rem' }}>
+              <input
+                id="settings-remember-device"
+                type="checkbox"
+                checked={rememberDevice}
+                onChange={(e) => setRememberDevice(e.target.checked)}
+                data-testid="settings-remember-device-checkbox"
+              />
+              <label htmlFor="settings-remember-device" className="text-xs text-muted" style={{ cursor: 'pointer' }}>
+                Remember this device (stores token in localStorage across browser restarts)
+              </label>
+            </div>
+
+            <p className="text-xs text-muted mt-2" style={{ fontStyle: 'italic' }}>
+              Security Note: Persistent storage survives browser reboots for convenience, but increases XSS exposure compared to tab-scoped sessionStorage.
+            </p>
+
             {tokenMessage && (
               <p className="text-xs text-muted mt-2" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                 <CheckCircle2 size={13} aria-hidden="true" />

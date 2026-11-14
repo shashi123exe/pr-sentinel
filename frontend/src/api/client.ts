@@ -37,44 +37,112 @@ export class ApiClientError extends Error {
 
 const BASE_URL = '/api';
 export const ACCESS_TOKEN_STORAGE_KEY = 'pr_sentinel_access_token';
+export const REMEMBER_DEVICE_STORAGE_KEY = 'pr_sentinel_remember_device';
 
 /**
- * Retrieve the shared access token from sessionStorage (isolated per browser session).
- * Stored strictly in sessionStorage to avoid cross-tab/persistent disk leakage.
+ * Check whether persistent "Remember this device" storage is enabled.
+ */
+export function isDeviceRemembered(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage?.getItem(REMEMBER_DEVICE_STORAGE_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Retrieve the shared access token.
+ * Priority:
+ * 1. Check tab-scoped sessionStorage first.
+ * 2. If absent and "Remember this device" was enabled, restore from persistent localStorage
+ *    and hydrate sessionStorage for active session.
  */
 export function getAccessToken(): string | null {
-  if (typeof window !== 'undefined' && window.sessionStorage) {
-    try {
-      return window.sessionStorage.getItem(ACCESS_TOKEN_STORAGE_KEY);
-    } catch {
-      return null;
+  if (typeof window === 'undefined') return null;
+
+  // 1. Check tab-scoped sessionStorage
+  try {
+    const sessionToken = window.sessionStorage?.getItem(ACCESS_TOKEN_STORAGE_KEY);
+    if (sessionToken && sessionToken.trim()) {
+      return sessionToken.trim();
     }
+  } catch {
+    // sessionStorage may be restricted
   }
+
+  // 2. Fallback to localStorage if device was remembered
+  try {
+    const isRemembered = window.localStorage?.getItem(REMEMBER_DEVICE_STORAGE_KEY) === 'true';
+    if (isRemembered) {
+      const localToken = window.localStorage?.getItem(ACCESS_TOKEN_STORAGE_KEY);
+      if (localToken && localToken.trim()) {
+        const trimmed = localToken.trim();
+        try {
+          window.sessionStorage?.setItem(ACCESS_TOKEN_STORAGE_KEY, trimmed);
+        } catch {
+          // sessionStorage may be restricted
+        }
+        return trimmed;
+      }
+    }
+  } catch {
+    // localStorage may be restricted
+  }
+
   return null;
 }
 
 /**
- * Store the shared access token in sessionStorage.
+ * Store the shared access token.
+ * Always stores in sessionStorage for the active session.
+ * If rememberDevice is true, also persists to localStorage so it survives browser restarts.
+ * If rememberDevice is false, removes any stored token in localStorage.
  */
-export function setAccessToken(token: string | null): void {
-  if (typeof window !== 'undefined' && window.sessionStorage) {
+export function setAccessToken(token: string | null, rememberDevice: boolean = false): void {
+  if (typeof window === 'undefined') return;
+
+  const trimmed = token ? token.trim() : '';
+
+  if (trimmed) {
     try {
-      if (token && token.trim()) {
-        window.sessionStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, token.trim());
-      } else {
-        window.sessionStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
-      }
+      window.sessionStorage?.setItem(ACCESS_TOKEN_STORAGE_KEY, trimmed);
     } catch {
       // Storage access may be restricted
     }
+
+    if (rememberDevice) {
+      try {
+        window.localStorage?.setItem(ACCESS_TOKEN_STORAGE_KEY, trimmed);
+        window.localStorage?.setItem(REMEMBER_DEVICE_STORAGE_KEY, 'true');
+      } catch {
+        // Storage access may be restricted
+      }
+    } else {
+      try {
+        window.localStorage?.removeItem(ACCESS_TOKEN_STORAGE_KEY);
+        window.localStorage?.removeItem(REMEMBER_DEVICE_STORAGE_KEY);
+      } catch {
+        // Storage access may be restricted
+      }
+    }
+  } else {
+    clearAccessToken();
   }
 }
 
 /**
- * Remove any stored access token from sessionStorage.
+ * Remove stored access token from both sessionStorage and localStorage.
  */
 export function clearAccessToken(): void {
-  setAccessToken(null);
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage?.removeItem(ACCESS_TOKEN_STORAGE_KEY);
+  } catch {}
+  try {
+    window.localStorage?.removeItem(ACCESS_TOKEN_STORAGE_KEY);
+    window.localStorage?.removeItem(REMEMBER_DEVICE_STORAGE_KEY);
+  } catch {}
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -301,9 +369,10 @@ export const apiClient = {
   },
 
   /**
-   * Session access token management
+   * Session and persistent access token management
    */
   getAccessToken,
   setAccessToken,
   clearAccessToken,
+  isDeviceRemembered,
 };
