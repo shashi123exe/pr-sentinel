@@ -4,6 +4,8 @@
 - **Status:** Verified & Production-Deployed
 - **Live Deployment:** [https://pr-sentinel-btyl.onrender.com](https://pr-sentinel-btyl.onrender.com)
 - **Repository:** [https://github.com/shashi123exe/pr-sentinel](https://github.com/shashi123exe/pr-sentinel)
+- **Validation Case Studies:** [docs/VALIDATION_CASES.md](VALIDATION_CASES.md)
+- **Technical Demo Guide:** [docs/DEMO_GUIDE.md](DEMO_GUIDE.md)
 
 ---
 

@@ -21,6 +21,7 @@
 
 - **Live Production URL**: [https://pr-sentinel-btyl.onrender.com](https://pr-sentinel-btyl.onrender.com)
 - **Source Code Repository**: [https://github.com/shashi123exe/pr-sentinel](https://github.com/shashi123exe/pr-sentinel)
+- **Real-World PR Validation Cases**: [docs/VALIDATION_CASES.md](docs/VALIDATION_CASES.md)
 - **Interactive Technical Walkthrough**: [docs/DEMO_GUIDE.md](docs/DEMO_GUIDE.md)
 - **Deep-Dive System Architecture**: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
@@ -211,7 +212,43 @@ When both Bandit and Gemini detect an issue on the same line, PR Sentinel merges
 
 ---
 
-## 10. Deployment Architecture
+## 10. Real-World Pull Request Validation
+
+PR Sentinel has been tested and verified across real-world open-source pull requests from production repositories. For the comprehensive case study analysis, see [docs/VALIDATION_CASES.md](docs/VALIDATION_CASES.md).
+
+### Case 1 — FastAPI PR #16387
+- **Pull Request**: [`fastapi/fastapi#16387`](https://github.com/fastapi/fastapi/pull/16387)
+- **Review Pipeline**: Completed across all seven stages (`fetch_pr` &rarr; `process_diff` &rarr; `static_analysis` &rarr; `retrieve_context` &rarr; `ai_review` &rarr; `validate_findings` &rarr; `persist_results`).
+- **Static Findings**: Four Bandit B101 findings (`assert_used`, Low severity, 100% confidence) in `tests/test_endpoint_context_shared_endpoint.py`.
+- **Finding Interpretation**: These are **contextual informational findings**, not confirmed production vulnerabilities. In test suites, `assert` is standard pytest idiom; in production bytecode compiled with `python -O`, assertions are stripped.
+- **AI Precision**: Gemini evaluated the PR diff and surrounding AST context, generating **zero additional findings** on this pull request.
+- **Model Cascade Execution**: Gemini executed successfully with bounded fallback handling (`gemini-3.8-flash` primary with automatic cascade to `gemini-3.6-flash` on capacity spikes or timeouts).
+
+### Case 2 — HTTPX PR #3775
+- **Pull Request**: [`encode/httpx#3775`](https://github.com/encode/httpx/pull/3775)
+- **Review Pipeline**: Completed across all seven stages.
+- **PR Scope**: Analyzed a test-server startup timeout and shutdown reliability change.
+- **Review Findings**: **Zero accepted findings** from both static analysis (Ruff, Bandit) and AI analysis (Gemini).
+- **Engineering Significance**: Proves the platform suppresses false-positive noise on clean, well-architected code without inventing trivial nitpicks.
+
+### Case 3 — Anthropic Skills PR #1638
+- **Pull Request**: [`anthropics/skills#1638`](https://github.com/anthropics/skills/pull/1638)
+- **Review Pipeline**: Completed across all seven stages.
+- **AI-Identified Finding (Gemini)**:
+  - **Category & Severity**: Logic / Input Validation &middot; **Medium Severity** &middot; **95% Confidence**.
+  - **Location**: `skills/webapp-testing/scripts/with_server.py`, lines 46–48.
+  - **Description**: Identified a potential command-parsing validation issue involving `cd <dir> &&` prefix handling. The finding identified a possible early-return validation bypass and empty command argument edge case where unexpected prefix chaining or whitespace could lead to unexpected command execution paths.
+  - **Developer Triage**: Verified through verbatim evidence matching and approved by the developer in PR Sentinel's triage dashboard.
+  - **Important Classification**: Described as a **potential logic and validation issue**, not an independently confirmed command injection or an exploitable vulnerability.
+- **Static Analysis Finding (Bandit)**:
+  - Separately reported rule **B603** (`subprocess_without_shell_equals_true`) at line 90, severity Low. This is a contextual subprocess warning, not proof of exploitation.
+
+> [!NOTE]
+> For detailed technical analysis, evidence verification proofs, and developer triage walkthroughs for all three cases, refer to the [Real-World Validation Case Studies Report](docs/VALIDATION_CASES.md).
+
+---
+
+## 11. Deployment Architecture
 
 PR Sentinel is deployed on **Render** as a single unified service running behind an edge proxy:
 
@@ -228,7 +265,7 @@ PR Sentinel is deployed on **Render** as a single unified service running behind
 
 ---
 
-## 11. Screenshots & Visual Walkthrough
+## 12. Screenshots & Visual Walkthrough
 
 Authentic screenshots captured from the live production deployment:
 
@@ -258,7 +295,7 @@ Authentic screenshots captured from the live production deployment:
 
 ---
 
-## 12. Local Development Setup
+## 13. Local Development Setup
 
 ### Prerequisites
 - Python 3.12+
@@ -304,7 +341,7 @@ docker compose up -d
 
 ---
 
-## 13. Environment Variables Reference
+## 14. Environment Variables Reference
 
 Configure these in `backend/.env` or Render environment settings:
 
@@ -314,7 +351,7 @@ Configure these in `backend/.env` or Render environment settings:
 | `GEMINI_API_KEY` | Optional | None | Google Gemini API key for AI code review capabilities. |
 | `GEMINI_MODEL` | Optional | `gemini-3.8-flash` | Primary Gemini model name for review generation. |
 | `GITHUB_TOKEN` | Optional | None | GitHub Personal Access Token to raise GitHub REST API rate limits from 60 to 5,000 req/hr. |
-| `APP_ACCESS_TOKEN` | Optional | None | Shared bearer token for API access control (stored strictly in browser `sessionStorage`). |
+| `APP_ACCESS_TOKEN` | Optional | None | Shared bearer token for API access control (stored tab-scoped in `sessionStorage` or remembered in `localStorage`). |
 | `SERVE_FRONTEND` | Optional | `false` | Enables static SPA frontend serving from FastAPI (set to `true` in production Docker). |
 | `MAX_REVIEWS_PER_DAY` | Optional | `20` | Rolling 24-hour review submission cap to protect Gemini free-tier quota. |
 | `RATE_LIMIT_PER_MINUTE` | Optional | `60` | SlowAPI rate limit for standard REST API endpoints. |
@@ -324,19 +361,19 @@ Configure these in `backend/.env` or Render environment settings:
 
 ---
 
-## 14. Testing & CI Results
+## 15. Testing & CI Results
 
 PR Sentinel enforces automated quality gates across backend, frontend, and Docker layers:
 
 ```text
 Backend Test Suite (Pytest)     : 433 passed, 1 skipped (93% line coverage)
-Frontend Test Suite (Vitest)    : 56 passed across 15 test files (100% pass rate)
-Combined Test Suite             : 489 passed, 1 skipped (100% pass rate of executed tests)
+Frontend Test Suite (Vitest)    : 69 passed across 16 test files (100% pass rate)
+Combined Test Suite             : 502 passed, 1 skipped (100% pass rate of executed tests)
 Backend Line Coverage           : 93% across app
 Backend Linting & Formatting    : Ruff 0 errors, 99 files formatted
 Backend Security Scan           : Bandit 0 high/medium issues
-Frontend Linting                : Oxlint 0 errors across 46 files
-Frontend Production Build       : Vite built in 1.49s (TypeScript validated)
+Frontend Linting                : Oxlint 0 errors across 47 files
+Frontend Production Build       : Vite built in 1.89s (TypeScript validated)
 Docker Render Image             : Built, tested, and verified in GitHub Actions
 ```
 
@@ -344,7 +381,7 @@ All 3 GitHub Actions CI jobs (`Frontend Tests, Lint & Build`, `Backend Tests & S
 
 ---
 
-## 15. Known Limitations & Free-Tier Constraints
+## 16. Known Limitations & Free-Tier Constraints
 
 - **Render Cold Starts**: On the Render Free tier, the web service spins down after 15 minutes of inactivity. Initial requests may take 30–50 seconds to wake the instance.
 - **Gemini Free-Tier Capacity Spikes**: During peak hours, Google's `gemini-3.8-flash` model may return HTTP 503 due to high demand. PR Sentinel automatically cascades to `gemini-3.6-flash` to prevent review failures.
@@ -353,6 +390,6 @@ All 3 GitHub Actions CI jobs (`Frontend Tests, Lint & Build`, `Backend Tests & S
 
 ---
 
-## 16. License
+## 17. License
 
 This project is licensed under the [MIT License](LICENSE) — see the LICENSE file for details.
